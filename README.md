@@ -127,6 +127,28 @@ LLM 會輪流輸出 `主持A：...` / `主持B：...`，後端解析後分別套
 
 ---
 
+## ⚠️ 套件版本相容性注意
+
+CosyVoice2 對 PyTorch / transformers / torchvision 的版本組合**很敏感**，
+本專案已驗證可運作的版本組合如下：
+
+| 套件         | 版本         | 備註                                   |
+|--------------|--------------|----------------------------------------|
+| torch        | 2.5.1+cu121  | NVIDIA：搭配 CUDA 12.1 wheel           |
+| torchaudio   | 2.5.1+cu121  | 必須與 torch 同版本                     |
+| torchvision  | 0.20.1+cu121 | 必須與 torch 同版本（否則 `nms` 報錯）  |
+| transformers | 4.46.3       | **5.x 會破壞** CosyVoice2 的 Qwen2 引用 |
+
+升級任何一個元件前，請先確認其餘三者仍能搭配。常見踩雷情境：
+
+- `transformers >= 5.0`：CosyVoice2 內部以舊式路徑載入 `Qwen2ForCausalLM`，會出現 `Could not import module 'Qwen2ForCausalLM'`。
+- `torch` 與 `torchvision` 大版本不同步：載入時報 `operator torchvision::nms does not exist`。
+- 用 CPU 版 torch（`+cpu`）跑 NVIDIA 機器：`torch.cuda.is_available()` 為 False，雖能跑但極慢，且 `transformers` 可能拒絕載入。
+
+若將來 CosyVoice 官方升級到支援新版 transformers，請同步調整 [runtime_manager.py](backend/runtime_manager.py) 中的版本鎖定。
+
+---
+
 ## 授權
 
 本專案為個人作品，原始碼以 MIT 授權釋出。
