@@ -190,9 +190,20 @@ def _check_ollama() -> tuple[bool, list[str]]:
 
 
 def _select_profile(gpu: Optional[GpuInfo], ram_gb: float) -> str:
-    """根據硬體選擇安裝設定檔"""
-    if gpu and gpu.vendor == "nvidia" and gpu.vram_mb >= 4096:
-        return "nvidia-cuda"
+    """根據硬體選擇安裝設定檔（可跨機器自動偵測）
+
+    - NVIDIA GPU + ≥4GB VRAM → nvidia-cuda（PyTorch CUDA build）
+    - Apple Silicon (M1/M2/M3/M4) → apple-mps（PyTorch MPS build，預設 wheel 即可）
+    - AMD GPU on Linux → amd-rocm（僅 Linux 有 ROCm wheel）
+    - 其他（含 AMD on Windows、Intel iGPU、無 GPU） → cpu-only
+    """
+    if gpu:
+        if gpu.vendor == "nvidia" and gpu.vram_mb >= 4096:
+            return "nvidia-cuda"
+        if gpu.vendor == "apple":
+            return "apple-mps"
+        if gpu.vendor == "amd" and platform.system() == "Linux":
+            return "amd-rocm"
     return "cpu-only"
 
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Generator
 
 import config
+import system_probe
 
 
 @dataclass
@@ -282,20 +283,66 @@ def _install_model_cosyvoice():
         else:
             _set("checking", "✓ CosyVoice2 程式碼已存在", 6)
 
-        # ── 步驟 3：安裝 PyTorch（若尚未安裝）────────────
+        # ── 步驟 3：安裝 PyTorch（自動依硬體選擇 build）────────────
+        # 跨機器自動選擇最佳 wheel：
+        #   nvidia-cuda → cu121 (Windows/Linux)
+        #   apple-mps   → 預設 wheel（macOS PyTorch 已內建 MPS）
+        #   amd-rocm    → rocm6.0 (Linux only)
+        #   cpu-only    → cpu wheel
+        info = system_probe.probe()
+        profile = info.install_profile
+
+        if profile == "nvidia-cuda":
+            index_url = "https://download.pytorch.org/whl/cu121"
+            variant_label = "CUDA 12.1"
+            expected_tag  = "+cu"
+        elif profile == "apple-mps":
+            index_url = None   # 用 PyPI 預設（macOS 預設 wheel 內含 MPS 支援）
+            variant_label = "Apple MPS"
+            expected_tag  = ""   # macOS wheel 無 +xxx 後綴
+        elif profile == "amd-rocm":
+            index_url = "https://download.pytorch.org/whl/rocm6.0"
+            variant_label = "AMD ROCm 6.0"
+            expected_tag  = "+rocm"
+        else:
+            index_url = "https://download.pytorch.org/whl/cpu"
+            variant_label = "CPU"
+            expected_tag  = "+cpu"
+
         check_torch = subprocess.run(
-            [venv_python, "-c", "import torch; print(torch.__version__)"],
+            [venv_python, "-c",
+             "import torch; print(torch.__version__); "
+             "print('cuda=', torch.cuda.is_available()); "
+             "print('mps=', getattr(torch.backends,'mps',None) and torch.backends.mps.is_available())"],
             capture_output=True, text=True,
         )
-        if check_torch.returncode != 0:
-            _set("installing", "安裝 PyTorch CPU 版（約 300MB，請耐心等待）...", 12)
-            _run_cmd([
+        installed_ver = (check_torch.stdout.splitlines() or [""])[0].strip()
+        # 判斷已裝版本是否符合目前硬體 profile
+        if check_torch.returncode != 0 or not installed_ver:
+            needs_install = True
+        elif expected_tag and expected_tag not in installed_ver:
+            needs_install = True
+        elif not expected_tag and any(t in installed_ver for t in ("+cu","+rocm","+cpu")):
+            needs_install = True   # Apple MPS 期望乾淨版本號
+        else:
+            needs_install = False
+
+        if needs_install:
+            _set("installing", f"安裝 PyTorch {variant_label} 版（約 300MB~2GB，請耐心等待）...", 12)
+            if installed_ver:
+                subprocess.run(
+                    [uv, "pip", "uninstall", "--python", venv_python, "torch", "torchaudio"],
+                    capture_output=True
+                )
+            cmd = [
                 uv, "pip", "install", "--python", venv_python,
                 "torch==2.3.1", "torchaudio==2.3.1",
-                "--index-url", "https://download.pytorch.org/whl/cpu",
-            ], "PyTorch CPU")
+            ]
+            if index_url:
+                cmd += ["--index-url", index_url]
+            _run_cmd(cmd, f"PyTorch {variant_label}")
         else:
-            _set("checking", f"✓ PyTorch {check_torch.stdout.strip()} 已安裝", 20)
+            _set("checking", f"✓ PyTorch {installed_ver} 已安裝（{variant_label}）", 20)
 
         # ── 步驟 4：安裝 CosyVoice2 依賴套件 ──────────────
         check_omegaconf = subprocess.run(
