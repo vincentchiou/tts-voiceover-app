@@ -1,0 +1,36 @@
+# 備份檔
+*.bak
+*.tmp
+
+# Claude Code 本機設定
+.claude/settings.local.json
+.claude/launch.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# venv（執行階段才會建立，不該入庫）
+venv/
+.venv/
+
+# 模型 / 工作產出（執行階段才會建立）
+runtime/
+models/
+jobs/
+uploads/
+voices/
+
+# 編輯器
+.vscode/
+.idea/
+*.swp
+
+# 系統
+.DS_Store
+Thumbs.db
+desktop.ini

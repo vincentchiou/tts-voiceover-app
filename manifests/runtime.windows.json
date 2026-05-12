@@ -1,0 +1,122 @@
+{
+  "_comment": "Windows 執行環境安裝清單。每個 profile 列出安裝元件。",
+  "profiles": {
+    "nvidia-cuda": {
+      "label": "NVIDIA GPU（CUDA）",
+      "min_vram_mb": 4096,
+      "min_disk_gb": 20,
+      "components": ["uv", "managed-python", "ffmpeg", "cosyvoice2-cuda", "whisper-gpu"]
+    },
+    "cpu-only": {
+      "label": "CPU 模式（無 GPU 或 VRAM 不足）",
+      "min_ram_gb": 8,
+      "min_disk_gb": 15,
+      "components": ["uv", "managed-python", "ffmpeg", "cosyvoice2-cpu", "whisper-cpu"]
+    }
+  },
+  "components": {
+    "uv": {
+      "label": "uv（Python 管理器）",
+      "size_mb": 5,
+      "download_url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip",
+      "extract_to": "uv",
+      "marker": ".uv-installed"
+    },
+    "managed-python": {
+      "label": "Python 3.10（隔離環境）",
+      "size_mb": 60,
+      "install_cmd": ["{uv}", "python", "install", "3.10"],
+      "marker": ".python-installed"
+    },
+    "ffmpeg": {
+      "label": "FFmpeg（音訊處理）",
+      "size_mb": 100,
+      "download_url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+      "extract_to": "ffmpeg",
+      "strip_top_dir": true,
+      "marker": ".ffmpeg-installed"
+    },
+    "cosyvoice2-cuda": {
+      "label": "CosyVoice2（CUDA GPU 版）",
+      "size_mb": 3000,
+      "steps": [
+        {
+          "label": "安裝 PyTorch CUDA 版",
+          "cmd": [
+            "{uv}", "pip", "install", "--python", "{venv_python}",
+            "torch==2.3.1", "torchaudio==2.3.1",
+            "--index-url", "https://download.pytorch.org/whl/cu121"
+          ]
+        },
+        {
+          "label": "複製 CosyVoice2 程式碼",
+          "git_clone": "https://github.com/FunAudioLLM/CosyVoice.git",
+          "clone_to": "{runtime_dir}/CosyVoice",
+          "branch": "main"
+        },
+        {
+          "label": "安裝 CosyVoice2 依賴套件",
+          "cmd": [
+            "{uv}", "pip", "install", "--python", "{venv_python}",
+            "omegaconf", "hydra-core", "onnxruntime-gpu",
+            "soundfile", "librosa", "conformer==0.3.2",
+            "diffusers", "transformers", "accelerate", "pydub",
+            "HyperPyYAML", "matcha-tts", "modelscope", "openai-whisper",
+            "inflect", "pyworld", "rich", "wget", "x-transformers", "scipy"
+          ]
+        }
+      ],
+      "marker": ".cosyvoice-installed"
+    },
+    "cosyvoice2-cpu": {
+      "label": "CosyVoice2（CPU 版）",
+      "size_mb": 2500,
+      "steps": [
+        {
+          "label": "安裝 PyTorch CPU 版",
+          "cmd": [
+            "{uv}", "pip", "install", "--python", "{venv_python}",
+            "torch==2.3.1", "torchaudio==2.3.1",
+            "--index-url", "https://download.pytorch.org/whl/cpu"
+          ]
+        },
+        {
+          "label": "複製 CosyVoice2 程式碼",
+          "git_clone": "https://github.com/FunAudioLLM/CosyVoice.git",
+          "clone_to": "{runtime_dir}/CosyVoice",
+          "branch": "main"
+        },
+        {
+          "label": "安裝 CosyVoice2 依賴套件",
+          "cmd": [
+            "{uv}", "pip", "install", "--python", "{venv_python}",
+            "omegaconf", "hydra-core", "onnxruntime",
+            "soundfile", "librosa", "conformer==0.3.2",
+            "diffusers", "transformers", "accelerate", "pydub",
+            "HyperPyYAML", "matcha-tts", "modelscope", "openai-whisper",
+            "inflect", "pyworld", "rich", "wget", "x-transformers", "scipy"
+          ]
+        }
+      ],
+      "marker": ".cosyvoice-installed"
+    },
+    "whisper-gpu": {
+      "label": "Faster-Whisper（GPU 版，用於 YouTube 轉錄）",
+      "size_mb": 200,
+      "cmd": [
+        "{uv}", "pip", "install", "--python", "{venv_python}",
+        "faster-whisper"
+      ],
+      "marker": ".whisper-installed"
+    },
+    "whisper-cpu": {
+      "label": "Faster-Whisper（CPU 版）",
+      "size_mb": 200,
+      "cmd": [
+        "{uv}", "pip", "install", "--python", "{venv_python}",
+        "faster-whisper"
+      ],
+      "marker": ".whisper-installed"
+    }
+  }
+}

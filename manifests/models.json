@@ -1,0 +1,55 @@
+{
+  "_comment": "可下載的模型清單",
+  "models": {
+    "cosyvoice2-0.5b": {
+      "label": "CosyVoice2-0.5B（中文 TTS + 聲音複製）",
+      "size_gb": 1.5,
+      "source": "modelscope",
+      "model_id": "iic/CosyVoice2-0.5B",
+      "local_dir": "{models_dir}/CosyVoice2-0.5B",
+      "required": true
+    },
+    "faster-whisper-medium": {
+      "label": "Faster-Whisper Medium（YouTube 語音轉錄）",
+      "size_gb": 1.5,
+      "source": "huggingface",
+      "model_id": "Systran/faster-whisper-medium",
+      "local_dir": "{models_dir}/faster-whisper-medium",
+      "required": false,
+      "required_for": ["youtube"]
+    }
+  },
+  "_note_voices": "CosyVoice2-0.5B 無 SFT 預設音色，所有音色均透過 inference_instruct2 + 參考音檔模擬",
+  "preset_voices": {
+    "台灣女聲": {
+      "label": "台灣女聲（親切溫柔）",
+      "instruct": "用親切溫柔的台灣國語女聲語氣說，咬字清晰",
+      "gender": "female"
+    },
+    "台灣男聲": {
+      "label": "台灣男聲（清楚有力）",
+      "instruct": "用清楚有力的台灣國語男聲語氣說，沉穩自信",
+      "gender": "male"
+    },
+    "活潑女聲": {
+      "label": "活潑女聲（開朗有活力）",
+      "instruct": "用活潑開朗充滿活力的語氣說，像年輕女老師",
+      "gender": "female"
+    },
+    "沉穩男聲": {
+      "label": "沉穩男聲（專業穩重）",
+      "instruct": "用沉穩專業的語氣說，像大學教授講課",
+      "gender": "male"
+    },
+    "溫暖男聲": {
+      "label": "溫暖男聲（像老師說故事）",
+      "instruct": "用溫暖親切像在說故事的語氣說，讓人感到放鬆",
+      "gender": "male"
+    },
+    "元氣女聲": {
+      "label": "元氣女聲（充滿熱情）",
+      "instruct": "用充滿熱情元氣十足的語氣說，像活力四射的年輕女生",
+      "gender": "female"
+    }
+  }
+}

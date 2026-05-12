@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎙️ 文生語音 APP</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ── 頂部標題 ── -->
+<header class="app-header">
+  <h1>🎙️ 文生語音 APP</h1>
+  <p>把課程內容變成輕鬆好聽的預習音頻 ✨</p>
+</header>
+
+<!-- ── Step 指示器 ── -->
+<div class="steps" id="stepsBar">
+  <div class="step-dot active" data-step="1">
+    <div class="step-num">1</div><span>選擇輸入</span>
+  </div>
+  <div class="step-arrow">›</div>
+  <div class="step-dot" data-step="2">
+    <div class="step-num">2</div><span>輸出設定</span>
+  </div>
+  <div class="step-arrow">›</div>
+  <div class="step-dot" data-step="3">
+    <div class="step-num">3</div><span>生成中</span>
+  </div>
+  <div class="step-arrow">›</div>
+  <div class="step-dot" data-step="4">
+    <div class="step-num">4</div><span>審閱腳本</span>
+  </div>
+  <div class="step-arrow">›</div>
+  <div class="step-dot" data-step="5">
+    <div class="step-num">5</div><span>完成</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ====== STEP 1：選擇輸入方式 ====== -->
+  <div class="card" id="step1">
+    <div class="section-title"><span class="emoji">📥</span> 選擇輸入方式</div>
+
+    <!-- 輸入類型 Tab -->
+    <div class="input-tabs">
+      <button class="tab-btn active" data-type="topic">💡 輸入主題</button>
+      <button class="tab-btn" data-type="pdf">📄 上傳 PDF</button>
+      <button class="tab-btn" data-type="youtube">▶️ YouTube 網址</button>
+      <button class="tab-btn" data-type="srt">📝 SRT / 腳本</button>
+    </div>
+
+    <!-- 主題輸入 -->
+    <div id="inputTopic">
+      <label>📌 教學主題</label>
+      <input type="text" id="topicText" placeholder="例如：光合作用、二次方程式、明朝滅亡原因..." />
+      <label style="margin-top:0.8rem">💬 補充說明（可選）</label>
+      <textarea id="topicNote" placeholder="可以補充學生年級、學習目標、特別想強調的觀念..." style="min-height:80px"></textarea>
+    </div>
+
+    <!-- PDF 上傳 -->
+    <div id="inputPdf" class="hidden">
+      <div class="upload-zone" id="pdfZone">
+        <input type="file" id="pdfFile" accept=".pdf" />
+        <div class="upload-icon">📄</div>
+        <div class="upload-text">點擊或拖曳 PDF 講義到這裡</div>
+        <div class="upload-name" id="pdfFileName"></div>
+      </div>
+    </div>
+
+    <!-- YouTube URL -->
+    <div id="inputYoutube" class="hidden">
+      <label>🔗 YouTube 或影片網址</label>
+      <input type="url" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." />
+      <p style="font-size:0.82rem;color:var(--muted);margin-top:0.4rem">
+        💡 程式會自動下載音訊並轉錄成文字，再生成腳本
+      </p>
+    </div>
+
+    <!-- SRT / 腳本 -->
+    <div id="inputSrt" class="hidden">
+      <div class="input-tabs" style="margin-bottom:0.8rem">
+        <button class="tab-btn active" data-subtype="srt">🎬 貼上 SRT 字幕</button>
+        <button class="tab-btn" data-subtype="script">📝 直接輸入腳本</button>
+      </div>
+      <div id="srtUploadZone">
+        <div class="upload-zone">
+          <input type="file" id="srtFile" accept=".srt,.txt" />
+          <div class="upload-icon">🎬</div>
+          <div class="upload-text">點擊上傳 SRT 字幕檔，或直接貼上文字</div>
+        </div>
+        <label style="margin-top:0.8rem">或貼上 SRT 內容</label>
+        <textarea id="srtText" placeholder="貼上 SRT 字幕內容..." style="min-height:120px"></textarea>
+      </div>
+      <div id="scriptInputZone" class="hidden">
+        <label>📝 腳本內容</label>
+        <textarea id="scriptText" placeholder="貼上你的腳本或演講稿..." style="min-height:160px"></textarea>
+      </div>
+    </div>
+
+    <button class="btn btn-primary mt-2" id="nextToStep2">繼續設定輸出 →</button>
+  </div>
+
+  <!-- ====== STEP 2：輸出設定 ====== -->
+  <div class="card hidden" id="step2">
+    <div class="section-title"><span class="emoji">⚙️</span> 輸出設定</div>
+
+    <!-- 輸出模式 -->
+    <label>🎯 輸出模式</label>
+    <div class="mode-grid">
+      <div class="mode-card active" data-mode="single">
+        <div class="icon">🎙️</div>
+        <div class="mode-label">單人解說</div>
+        <div class="mode-desc">一個聲音娓娓道來</div>
+      </div>
+      <div class="mode-card" data-mode="duo">
+        <div class="icon">🎭</div>
+        <div class="mode-label">雙人 Podcast</div>
+        <div class="mode-desc">一問一答，有趣互動</div>
+      </div>
+      <div class="mode-card" data-mode="short_video">
+        <div class="icon">📱</div>
+        <div class="mode-label">短影音</div>
+        <div class="mode-desc">60-90 秒，快節奏</div>
+      </div>
+    </div>
+
+    <!-- 目標時長 -->
+    <div id="durationRow">
+      <label style="margin-bottom:0.6rem">⏱️ 語音長度</label>
+
+      <!-- 快選預設 -->
+      <div class="duration-presets">
+        <button class="dur-btn" data-min="1">1 分</button>
+        <button class="dur-btn" data-min="3">3 分</button>
+        <button class="dur-btn active" data-min="5">5 分</button>
+        <button class="dur-btn" data-min="10">10 分</button>
+        <button class="dur-btn" data-min="15">15 分</button>
+        <button class="dur-btn" data-min="20">20 分</button>
+        <button class="dur-btn" data-min="30">30 分</button>
+      </div>
+
+      <!-- 滑桿 + 即時顯示 -->
+      <div class="duration-slider-wrap">
+        <input type="range" id="durationSlider" min="1" max="30" value="5" step="1" />
+        <div class="duration-display">
+          <span class="dur-minutes" id="durationVal">5</span>
+          <span class="dur-unit">分鐘</span>
+          <span class="dur-approx" id="durationApprox">約 1200 字</span>
+        </div>
+      </div>
+
+      <!-- 刻度 -->
+      <div class="duration-ticks">
+        <span>1</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
+      </div>
+    </div>
+
+    <!-- 音色設定 -->
+    <label style="margin-top:1.2rem">🎵 音色設定</label>
+    <div class="voice-grid">
+      <div class="voice-slot">
+        <label id="voiceALabel">音色 A（主要）</label>
+        <select id="voiceASelect"></select>
+      </div>
+      <div class="voice-slot" id="voiceBSlot">
+        <label>音色 B（雙人模式）</label>
+        <select id="voiceBSelect"></select>
+      </div>
+    </div>
+
+    <!-- 聲音複製 -->
+    <div style="margin-top:1rem">
+      <label>🎤 自訂音色（上傳 3-10 秒參考音檔，可選）</label>
+      <div class="upload-zone" id="voiceCloneZone" style="padding:1.2rem">
+        <input type="file" id="voiceCloneFile" accept=".wav,.mp3,.m4a" />
+        <div class="upload-icon" style="font-size:1.8rem">🎤</div>
+        <div class="upload-text" style="font-size:0.83rem">上傳聲音後可複製音色來朗讀</div>
+        <div class="upload-name" id="voiceCloneName"></div>
+      </div>
+      <div id="voiceCloneForm" class="hidden" style="margin-top:0.6rem">
+        <label>音色名稱</label>
+        <input type="text" id="voiceCloneLabel" placeholder="給這個音色取個名字..." />
+        <label>參考音檔中說的話（可空白）</label>
+        <input type="text" id="voiceCloneRefText" placeholder="參考音檔中說的文字..." />
+        <button class="btn btn-outline mt-1" id="doCloneVoice" style="width:auto">上傳並建立音色</button>
+      </div>
+    </div>
+
+    <!-- LLM 狀態提示 -->
+    <div id="llmStatusHint" class="llm-status-hint hidden"></div>
+
+    <div class="gap-row mt-2">
+      <button class="btn btn-outline" id="backToStep1" style="flex:1">← 返回</button>
+      <button class="btn btn-primary" id="startGenerate" style="flex:2">🚀 開始生成腳本</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 3：生成中 ====== -->
+  <div class="card hidden progress-card" id="step3">
+    <span class="progress-emoji" id="progressEmoji">✨</span>
+    <div class="section-title text-center" style="justify-content:center" id="progressTitle">腳本生成中</div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar" style="width:5%"></div>
+    </div>
+    <div class="progress-pct" id="progressPct">5%</div>
+    <div class="progress-msg" id="progressMsg">準備中...</div>
+  </div>
+
+  <!-- ====== STEP 4：審閱腳本 ====== -->
+  <div class="card hidden" id="step4">
+    <div class="section-title"><span class="emoji">📋</span> 審閱腳本</div>
+    <div class="script-meta">
+      <span class="script-badge" id="estMinutes">⏱️ 估算時長：?</span>
+      <span class="script-badge" id="segCount">📝 段落數：?</span>
+      <span class="script-badge" id="outputModeLabel">🎙️ 模式：?</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.8rem">
+      你可以直接修改下方腳本文字，確認後再開始語音合成 👇
+    </p>
+    <textarea class="script-textarea" id="scriptReview"></textarea>
+    <div class="gap-row mt-2">
+      <button class="btn btn-outline" id="regenScript" style="flex:1">🔄 重新生成</button>
+      <button class="btn btn-success" id="approveScript" style="flex:2">✅ 確認，開始合成語音</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 5：完成 ====== -->
+  <div class="card hidden text-center" id="step5">
+    <span class="complete-emoji">🎉</span>
+    <div class="section-title text-center" style="justify-content:center;margin-bottom:0.3rem">
+      語音合成完成！
+    </div>
+    <p style="font-size:0.88rem;color:var(--muted);margin-bottom:0.5rem">快來聽聽看 🎧</p>
+    <audio id="audioPlayer" controls></audio>
+    <div class="gap-row mt-1" style="justify-content:center">
+      <a class="btn btn-success" id="downloadBtn" href="#" download>⬇️ 下載 MP3</a>
+      <button class="btn btn-outline" id="restartBtn">🔁 再做一個</button>
+    </div>
+  </div>
+
+  <!-- ====== 系統資訊（折疊） ====== -->
+  <div class="card" id="systemCard" style="margin-top:0.5rem">
+    <div class="section-title" style="cursor:pointer;justify-content:space-between"
+         onclick="toggleSystemInfo()">
+      <span><span class="emoji">💻</span> 系統資訊 / 環境安裝</span>
+      <span id="systemToggleArrow" style="color:var(--muted)">▼</span>
+    </div>
+    <div id="systemInfoBody" class="hidden">
+      <div class="hw-grid" id="hwGrid">
+        <div class="hw-item"><span class="hw-label">載入中...</span></div>
+      </div>
+      <div id="installSection" class="hidden mt-2">
+        <p style="font-size:0.88rem;color:var(--muted);margin-bottom:0.8rem">
+          ⚠️ 尚未安裝語音引擎，請先點下方按鈕完成安裝（首次約需 10-20 分鐘）
+        </p>
+        <div class="progress-bar-wrap hidden" id="installProgressWrap">
+          <div class="progress-bar-fill" id="installProgressBar" style="width:0%"></div>
+        </div>
+        <div class="progress-msg hidden" id="installProgressMsg"></div>
+        <button class="btn btn-primary mt-1" id="installBtn">🛠️ 自動安裝環境</button>
+      </div>
+      <div id="downloadModelsSection" class="hidden mt-2">
+        <p style="font-size:0.88rem;color:var(--muted);margin-bottom:0.8rem">
+          📦 請下載所需模型（可個別下載）
+        </p>
+        <div class="gap-row">
+          <button class="btn btn-outline" id="downloadCosyvoiceBtn" style="flex:1">
+            ⬇️ 下載語音模型 CosyVoice2（1.5GB）
+          </button>
+          <button class="btn btn-outline" id="downloadWhisperBtn" style="flex:1">
+            ⬇️ 下載 Whisper 模型（1.5GB，YouTube 用）
+          </button>
+        </div>
+      </div>
+      <div id="repairSection" class="hidden mt-2">
+        <p style="font-size:0.88rem;color:#ff6b35;margin-bottom:0.8rem">
+          ⚠️ CosyVoice2 已安裝但缺少部分套件，請點下方按鈕補裝（約 2-5 分鐘）
+        </p>
+        <button class="btn btn-outline" id="repairCosyvoiceBtn"
+                style="border-color:#ff6b35;color:#ff6b35">
+          🔧 補裝 CosyVoice2 缺失套件
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LLM 設定面板 -->
+  <div class="card" id="llmSettingsCard">
+    <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleLlmSettings()">
+      <span class="emoji">🤖</span> LLM 腳本生成設定
+      <span id="llmToggleArrow" style="margin-left:auto;font-size:0.9rem">▼</span>
+    </div>
+    <div id="llmSettingsBody" class="hidden">
+
+      <!-- Provider 選擇 -->
+      <label>語言模型來源</label>
+      <div class="llm-provider-grid">
+        <button class="llm-provider-btn active" data-provider="ollama">
+          🏠 Ollama<span>本地</span>
+        </button>
+        <button class="llm-provider-btn" data-provider="lmstudio">
+          🖥️ LMStudio<span>本地</span>
+        </button>
+        <button class="llm-provider-btn" data-provider="openai">
+          ✨ OpenAI<span>雲端</span>
+        </button>
+        <button class="llm-provider-btn" data-provider="anthropic">
+          🔶 Anthropic<span>雲端</span>
+        </button>
+      </div>
+
+      <!-- Ollama 設定 -->
+      <div id="llmOllama" class="llm-section">
+        <label>Ollama 位址</label>
+        <input type="text" id="ollamaBaseUrl" value="http://localhost:11434" placeholder="http://localhost:11434" />
+        <label>模型名稱</label>
+        <input type="text" id="ollamaModel" value="qwen3:8b" placeholder="qwen3:8b" />
+      </div>
+
+      <!-- LMStudio 設定 -->
+      <div id="llmLmstudio" class="llm-section hidden">
+        <label>LMStudio 位址</label>
+        <div class="gap-row">
+          <input type="text" id="lmstudioBaseUrl" value="http://localhost:1234" placeholder="http://localhost:1234" style="flex:1" />
+          <button type="button" class="btn btn-outline" id="refreshLmstudioBtn" title="重新載入模型清單">🔄</button>
+        </div>
+        <label>模型（從 LMStudio 已載入的模型中選擇）</label>
+        <select id="lmstudioModel">
+          <option value="">（請先點 🔄 載入清單）</option>
+        </select>
+        <p id="lmstudioModelHint" style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem"></p>
+      </div>
+
+      <!-- OpenAI 設定 -->
+      <div id="llmOpenai" class="llm-section hidden">
+        <label>OpenAI API Key</label>
+        <input type="password" id="openaiApiKey" placeholder="sk-..." autocomplete="off" />
+        <label>模型</label>
+        <select id="openaiModel">
+          <option value="gpt-4o-mini">gpt-4o-mini（便宜快）</option>
+          <option value="gpt-4o">gpt-4o（品質佳）</option>
+          <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+        </select>
+      </div>
+
+      <!-- Anthropic 設定 -->
+      <div id="llmAnthropic" class="llm-section hidden">
+        <label>Anthropic API Key</label>
+        <input type="password" id="anthropicApiKey" placeholder="sk-ant-..." autocomplete="off" />
+        <label>模型</label>
+        <select id="anthropicModel">
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（快速便宜）</option>
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6（平衡）</option>
+          <option value="claude-opus-4-6">Claude Opus 4.6（最強）</option>
+        </select>
+      </div>
+
+      <!-- 角色設定說明 -->
+      <div class="llm-roles-info mt-1">
+        <div class="role-tag">🎙️ 主持A（小艾）</div><span>好奇的學生視角，問出真正的疑惑</span>
+        <div class="role-tag">💡 主持B（大維）</div><span>知識豐富的達人，用比喻和故事解釋</span>
+        <div class="role-tag">📖 單人解說</div><span>摘要性說明，像朋友在做預習導讀</span>
+      </div>
+
+      <div class="gap-row mt-1">
+        <button class="btn btn-outline" id="testLlmBtn" style="flex:1">🔌 測試連線</button>
+        <button class="btn btn-primary" id="saveLlmBtn" style="flex:2">💾 儲存設定</button>
+      </div>
+      <p id="llmTestResult" style="font-size:0.85rem;margin-top:0.5rem;color:var(--muted)"></p>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- 彩帶 -->
+<div class="confetti-wrap hidden" id="confettiWrap"></div>
+
+<script src="/static/app.js?v=20260512b"></script>
+</body>
+</html>
