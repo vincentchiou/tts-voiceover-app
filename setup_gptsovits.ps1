@@ -89,7 +89,23 @@ function Expand-IfNeeded($zip, $dest, $marker_file) {
     Log-Ok "解壓完成 → $dest"
 }
 
+# 若 zip 內有重複的頂層目錄（例如 pretrained_models.zip 解出來變成
+# pretrained_models/pretrained_models/...），自動把內層內容上移一層。
+function Flatten-NestedDir($parent, $nested_name) {
+    $nested = Join-Path $parent $nested_name
+    if (Test-Path $nested) {
+        Log-Info "偵測到巢狀目錄 $nested_name/，上移內容..."
+        Get-ChildItem -Path $nested -Force | ForEach-Object {
+            Move-Item -Path $_.FullName -Destination $parent -Force
+        }
+        Remove-Item -Path $nested -Recurse -Force
+        Log-Ok "巢狀目錄已展平"
+    }
+}
+
 Expand-IfNeeded $PRETRAINED_ZIP $PRETRAINED (Join-Path $PRETRAINED ".extracted")
+Flatten-NestedDir $PRETRAINED "pretrained_models"
+
 $G2PW_DEST = Join-Path $GPTSOVITS_DIR "GPT_SoVITS\text"
 Expand-IfNeeded $G2PW_ZIP $G2PW_DEST (Join-Path $G2PW_DEST ".g2pw_extracted")
 
