@@ -276,16 +276,16 @@ def _synthesize_job(job_id: str):
         if not job:
             return
 
-        # 先確認 CosyVoice 環境就緒，給出明確錯誤訊息
-        if not config.COSYVOICE_REPO.exists():
+        # 先確認 GPT-SoVITS 環境就緒，給出明確錯誤訊息
+        if not config.GPTSOVITS_REPO.exists():
             raise RuntimeError(
-                "CosyVoice2 程式碼尚未安裝。"
-                "請展開下方「系統資訊」，點選「安裝語音引擎 CosyVoice2」後再試。"
+                "GPT-SoVITS 程式碼尚未安裝。\n"
+                "請在專案根目錄執行 setup_gptsovits.ps1 完成安裝。"
             )
-        if not config.COSYVOICE_DIR.exists():
+        if not config.MARKER_GPTSOVITS.exists():
             raise RuntimeError(
-                "CosyVoice2 模型尚未下載。"
-                "請展開下方「系統資訊」，點選「下載語音模型 CosyVoice2」後再試。"
+                "GPT-SoVITS 尚未完成設定。\n"
+                "請執行 setup_gptsovits.ps1 直到看到「安裝完成！」訊息。"
             )
 
         job_dir = config.JOBS_DIR / job_id

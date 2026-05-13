@@ -127,9 +127,6 @@ def _extract_zip(zip_path: Path, dest: Path, strip_top_dir: bool = False):
 def _run_cmd(cmd: list, label: str):
     """執行安裝命令，失敗則拋出例外"""
     env = {**os.environ}
-    # 只有在 CosyVoice repo 已存在時才加入 PYTHONPATH
-    if config.COSYVOICE_REPO.exists():
-        env["PYTHONPATH"] = str(config.COSYVOICE_REPO)
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"{label} 失敗：{result.stderr[-500:]}")
@@ -257,152 +254,17 @@ def _ensure_hf_hub(venv_python: str):
         )
 
 
-def _install_model_cosyvoice():
+def _install_model_gptsovits_hint():
     """
-    完整安裝 CosyVoice2：
-      1. Clone 程式碼（若不存在）
-      2. 安裝 PyTorch + 依賴套件（若不存在）
-      3. 下載模型權重
+    GPT-SoVITS 不再使用 runtime_manager 自動安裝；
+    引導使用者執行 setup_gptsovits.ps1。
     """
-    try:
-        venv_python = str(config.VENV_DIR / "Scripts" / "python.exe")
-        uv = str(config.UV_EXE)
-
-        # ── 步驟 1：確認 huggingface_hub ──────────────────
-        _set("installing", "確認下載工具...", 3)
-        _ensure_hf_hub(venv_python)
-
-        # ── 步驟 2：Clone CosyVoice 程式碼 ────────────────
-        if not config.COSYVOICE_REPO.exists():
-            _set("installing", "複製 CosyVoice2 程式碼（需要 git）...", 6)
-            _git_clone(
-                "https://github.com/FunAudioLLM/CosyVoice.git",
-                config.COSYVOICE_REPO,
-                "main",
-            )
-        else:
-            _set("checking", "✓ CosyVoice2 程式碼已存在", 6)
-
-        # ── 步驟 3：安裝 PyTorch（自動依硬體選擇 build）────────────
-        # 跨機器自動選擇最佳 wheel：
-        #   nvidia-cuda → cu121 (Windows/Linux)
-        #   apple-mps   → 預設 wheel（macOS PyTorch 已內建 MPS）
-        #   amd-rocm    → rocm6.0 (Linux only)
-        #   cpu-only    → cpu wheel
-        info = system_probe.probe()
-        profile = info.install_profile
-
-        if profile == "nvidia-cuda":
-            index_url = "https://download.pytorch.org/whl/cu121"
-            variant_label = "CUDA 12.1"
-            expected_tag  = "+cu"
-        elif profile == "apple-mps":
-            index_url = None   # 用 PyPI 預設（macOS 預設 wheel 內含 MPS 支援）
-            variant_label = "Apple MPS"
-            expected_tag  = ""   # macOS wheel 無 +xxx 後綴
-        elif profile == "amd-rocm":
-            index_url = "https://download.pytorch.org/whl/rocm6.0"
-            variant_label = "AMD ROCm 6.0"
-            expected_tag  = "+rocm"
-        else:
-            index_url = "https://download.pytorch.org/whl/cpu"
-            variant_label = "CPU"
-            expected_tag  = "+cpu"
-
-        check_torch = subprocess.run(
-            [venv_python, "-c",
-             "import torch; print(torch.__version__); "
-             "print('cuda=', torch.cuda.is_available()); "
-             "print('mps=', getattr(torch.backends,'mps',None) and torch.backends.mps.is_available())"],
-            capture_output=True, text=True,
-        )
-        installed_ver = (check_torch.stdout.splitlines() or [""])[0].strip()
-        # 判斷已裝版本是否符合目前硬體 profile
-        if check_torch.returncode != 0 or not installed_ver:
-            needs_install = True
-        elif expected_tag and expected_tag not in installed_ver:
-            needs_install = True
-        elif not expected_tag and any(t in installed_ver for t in ("+cu","+rocm","+cpu")):
-            needs_install = True   # Apple MPS 期望乾淨版本號
-        else:
-            needs_install = False
-
-        if needs_install:
-            _set("installing", f"安裝 PyTorch {variant_label} 版（約 300MB~2GB，請耐心等待）...", 12)
-            if installed_ver:
-                subprocess.run(
-                    [uv, "pip", "uninstall", "--python", venv_python, "torch", "torchaudio"],
-                    capture_output=True
-                )
-            cmd = [
-                uv, "pip", "install", "--python", venv_python,
-                "torch==2.3.1", "torchaudio==2.3.1",
-            ]
-            if index_url:
-                cmd += ["--index-url", index_url]
-            _run_cmd(cmd, f"PyTorch {variant_label}")
-        else:
-            _set("checking", f"✓ PyTorch {installed_ver} 已安裝（{variant_label}）", 20)
-
-        # ── 步驟 4：安裝 CosyVoice2 依賴套件 ──────────────
-        check_omegaconf = subprocess.run(
-            [venv_python, "-c", "import omegaconf"],
-            capture_output=True,
-        )
-        # 每次都重新確認必要套件（以 CosyVoice2 官方 requirements.txt 為準）
-        _set("installing", "安裝／確認 CosyVoice2 依賴套件...", 25)
-        deps = [
-            uv, "pip", "install", "--python", venv_python,
-            # 核心 ML 依賴
-            "omegaconf", "hydra-core",
-            "onnxruntime",          # Windows 版（非 GPU）
-            "soundfile", "librosa",
-            "conformer==0.3.2",
-            "diffusers", "transformers", "accelerate", "pydub",
-            # CosyVoice2 必要依賴
-            "HyperPyYAML",
-            "matcha-tts",
-            "modelscope",
-            "openai-whisper",       # cosyvoice/cli/frontend.py 直接 import whisper
-            # 其他官方清單套件
-            "inflect", "pyworld", "rich", "wget",
-            "x-transformers",
-        ]
-        _run_cmd(deps, "CosyVoice2 依賴套件")
-        # WeTextProcessing 在 Windows 可能失敗，單獨安裝，失敗不中斷
-        try:
-            _run_cmd([
-                uv, "pip", "install", "--python", venv_python,
-                "WeTextProcessing",
-            ], "WeTextProcessing")
-        except Exception:
-            pass
-
-        # ── 步驟 5：下載模型權重 ───────────────────────────
-        _set("downloading", "下載 CosyVoice2-0.5B 模型權重（約 1.5GB）...", 40)
-        config.COSYVOICE_DIR.mkdir(parents=True, exist_ok=True)
-
-        script = f"""
-from huggingface_hub import snapshot_download
-snapshot_download(
-    'FunAudioLLM/CosyVoice2-0.5B',
-    local_dir=r'{config.COSYVOICE_DIR}',
-    ignore_patterns=['*.bin', 'flac/*'],
-)
-print('DONE')
-"""
-        proc = subprocess.run(
-            [venv_python, "-c", script],
-            capture_output=True, text=True, timeout=1800,
-        )
-        if proc.returncode != 0 or "DONE" not in proc.stdout:
-            raise RuntimeError(f"模型下載失敗：{proc.stderr[-500:]}")
-
-        config.MARKER_COSYVOICE.touch()
-        _set("complete", "CosyVoice2 安裝完成！可以開始合成語音 🎉", 100)
-
-    except Exception as e:
-        _set("error", str(e), _progress.percent, str(e))
+    _set(
+        "error",
+        "請執行專案根目錄下的 setup_gptsovits.ps1 完成 GPT-SoVITS 安裝。",
+        0,
+        "GPT-SoVITS 需以獨立 venv 安裝，請執行 setup_gptsovits.ps1。",
+    )
 
 
 def _install_model_whisper():
@@ -457,8 +319,10 @@ def start_model_download(model_id: str) -> bool:
     with _install_lock:
         if is_installing():
             return False
-        if model_id == "cosyvoice2-0.5b":
-            target = _install_model_cosyvoice
+        if model_id == "gptsovits-v4":
+            # GPT-SoVITS 由獨立的 setup_gptsovits.ps1 腳本安裝；
+            # 此處只回傳提示訊息，不在主後端內進行安裝
+            target = _install_model_gptsovits_hint
         elif model_id == "faster-whisper-medium":
             target = _install_model_whisper
         else:
@@ -469,40 +333,14 @@ def start_model_download(model_id: str) -> bool:
     return True
 
 
-def _repair_cosyvoice_deps():
-    """只補裝缺失的 Python 依賴套件（不重下模型）"""
-    try:
-        venv_python = str(config.VENV_DIR / "Scripts" / "python.exe")
-        uv = str(config.UV_EXE)
-        _set("installing", "補裝 CosyVoice2 缺失套件...", 10)
-        deps = [
-            uv, "pip", "install", "--python", venv_python,
-            "omegaconf", "hydra-core", "onnxruntime",
-            "soundfile", "librosa", "conformer==0.3.2",
-            "diffusers", "transformers", "accelerate", "pydub",
-            "HyperPyYAML", "matcha-tts",
-            "modelscope", "openai-whisper",
-            "inflect", "pyworld", "rich", "wget", "x-transformers",
-        ]
-        _run_cmd(deps, "CosyVoice2 依賴套件")
-        try:
-            _run_cmd([uv, "pip", "install", "--python", venv_python,
-                      "WeTextProcessing"], "WeTextProcessing")
-        except Exception:
-            pass
-        config.MARKER_COSYVOICE.touch()
-        _set("complete", "依賴套件補裝完成！請重試語音合成 🎉", 100)
-    except Exception as e:
-        _set("error", str(e), _progress.percent, str(e))
-
-
 def start_repair_cosyvoice() -> bool:
-    """啟動補裝執行緒"""
+    """[已棄用] 留存名稱避免破壞舊呼叫端；現在會回報需執行 setup_gptsovits.ps1。"""
     global _install_thread
     with _install_lock:
         if is_installing():
             return False
-        _set("checking", "準備補裝依賴套件...", 0)
-        _install_thread = threading.Thread(target=_repair_cosyvoice_deps, daemon=True)
+        _install_thread = threading.Thread(
+            target=_install_model_gptsovits_hint, daemon=True
+        )
         _install_thread.start()
     return True

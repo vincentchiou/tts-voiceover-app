@@ -50,6 +50,16 @@ if config.FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
 
+# ── 生命週期：關閉時停掉 GPT-SoVITS 子行程 ────────────────────
+@app.on_event("shutdown")
+def _on_shutdown():
+    try:
+        import gptsovits_service
+        gptsovits_service.stop()
+    except Exception:
+        pass
+
+
 # ── 首頁：回傳前端 HTML ────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -123,7 +133,7 @@ async def setup_progress_once():
 # ── 模型下載 ──────────────────────────────────────────────
 
 class ModelDownloadRequest(BaseModel):
-    model_id: str  # cosyvoice2-0.5b / faster-whisper-medium
+    model_id: str  # gptsovits-v4 / faster-whisper-medium
 
 
 @app.post("/models/download")

@@ -33,7 +33,7 @@ class SystemInfo:
     ollama_models: list = field(default_factory=list)
     # 已安裝元件狀態
     ffmpeg_ready: bool = False
-    cosyvoice_ready: bool = False
+    gptsovits_ready: bool = False
     whisper_ready: bool = False
 
 
@@ -228,12 +228,12 @@ def probe() -> SystemInfo:
     info.ollama_available, info.ollama_models = _check_ollama()
 
     # 已安裝元件狀態
-    # cosyvoice 需要：marker 存在 + 程式碼 repo 已 clone + 模型目錄存在
+    # GPT-SoVITS 需要：marker 存在 + 程式碼 repo 已 clone + 權重目錄存在
     info.ffmpeg_ready    = config.MARKER_FFMPEG.exists()
-    info.cosyvoice_ready = (
-        config.MARKER_COSYVOICE.exists()
-        and config.COSYVOICE_REPO.exists()
-        and config.COSYVOICE_DIR.exists()
+    info.gptsovits_ready = (
+        config.MARKER_GPTSOVITS.exists()
+        and config.GPTSOVITS_REPO.exists()
+        and config.GPTSOVITS_PRETRAINED.exists()
     )
     info.whisper_ready   = config.MARKER_WHISPER.exists()
 
@@ -259,11 +259,11 @@ def probe_dict() -> dict:
         "ollama_models": info.ollama_models,
         "components": {
             "ffmpeg": info.ffmpeg_ready,
-            "cosyvoice": info.cosyvoice_ready,
-            # cosyvoice 子狀態：方便前端顯示更細的訊息
-            "cosyvoice_code": config.COSYVOICE_REPO.exists(),
-            "cosyvoice_model": config.COSYVOICE_DIR.exists(),
+            "gptsovits": info.gptsovits_ready,
+            # GPT-SoVITS 子狀態：方便前端顯示更細的訊息
+            "gptsovits_code": config.GPTSOVITS_REPO.exists(),
+            "gptsovits_model": config.GPTSOVITS_PRETRAINED.exists(),
             "whisper": info.whisper_ready,
         },
-        "ready": info.ffmpeg_ready and info.cosyvoice_ready,
+        "ready": info.ffmpeg_ready and info.gptsovits_ready,
     }

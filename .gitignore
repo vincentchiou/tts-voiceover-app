@@ -25,6 +25,9 @@ jobs/
 uploads/
 voices/
 
+# GPT-SoVITS 第三方原始碼與權重（不入庫，由 install/setup 步驟取得）
+GPT-SoVITS/
+
 # 編輯器
 .vscode/
 .idea/

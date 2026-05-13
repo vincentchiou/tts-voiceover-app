@@ -41,9 +41,12 @@ FFMPEG_EXE    = FFMPEG_DIR / "bin" / "ffmpeg.exe"
 
 # 模型存放
 MODELS_DIR        = APP_HOME / "models"
-COSYVOICE_DIR     = MODELS_DIR / "CosyVoice2-0.5B"
 WHISPER_DIR       = MODELS_DIR / "faster-whisper-medium"
-COSYVOICE_REPO    = RUNTIME_DIR / "CosyVoice"  # git clone 位置
+
+# GPT-SoVITS（取代 CosyVoice2 作為 TTS 引擎）
+GPTSOVITS_REPO    = REPO_DIR / "GPT-SoVITS"                  # 由 setup_gptsovits.ps1 clone
+GPTSOVITS_PRETRAINED = GPTSOVITS_REPO / "GPT_SoVITS" / "pretrained_models"
+GPTSOVITS_VENV    = RUNTIME_DIR / "gptsovits_venv"            # 獨立 venv 隔離依賴衝突
 
 # 工作輸出
 JOBS_DIR    = APP_HOME / "jobs"
@@ -61,7 +64,7 @@ FRONTEND_DIR = REPO_DIR / "frontend"
 
 # ── 安裝標記檔 ────────────────────────────────────────────
 MARKER_FFMPEG       = RUNTIME_DIR / ".ffmpeg-installed"
-MARKER_COSYVOICE    = RUNTIME_DIR / ".cosyvoice-installed"
+MARKER_GPTSOVITS    = RUNTIME_DIR / ".gptsovits-installed"
 MARKER_WHISPER      = RUNTIME_DIR / ".whisper-installed"
 MARKER_YTDLP        = RUNTIME_DIR / ".ytdlp-installed"
 
