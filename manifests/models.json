@@ -25,42 +25,42 @@
     "台灣女聲": {
       "label": "台灣女聲（親切溫柔）",
       "ref_audio": "preset_voices/taiwan_female_warm.wav",
-      "prompt_text": "今天天氣真好，我們一起出去走走吧。",
+      "prompt_text": "今天天氣真好，我們一起出去走走吧，順便聊聊最近發生的有趣事情。",
       "prompt_lang": "zh",
       "gender": "female"
     },
     "台灣男聲": {
       "label": "台灣男聲（清楚有力）",
       "ref_audio": "preset_voices/taiwan_male_clear.wav",
-      "prompt_text": "今天天氣真好，我們一起出去走走吧。",
+      "prompt_text": "歡迎收聽今天的內容，讓我們一起來深入了解這個有趣的主題。",
       "prompt_lang": "zh",
       "gender": "male"
     },
     "活潑女聲": {
       "label": "活潑女聲（開朗有活力）",
       "ref_audio": "preset_voices/taiwan_female_lively.wav",
-      "prompt_text": "嗨嗨大家好，我們今天要來學一個超有趣的東西喔！",
+      "prompt_text": "嗨嗨大家好，我們今天要來學一個超有趣的東西喔，準備好了嗎？",
       "prompt_lang": "zh",
       "gender": "female"
     },
     "沉穩男聲": {
       "label": "沉穩男聲（專業穩重）",
       "ref_audio": "preset_voices/taiwan_male_steady.wav",
-      "prompt_text": "本次課程的核心目標，是讓大家理解這個概念的本質。",
+      "prompt_text": "本次課程的核心目標，是讓大家理解這個概念的本質與運作原理。",
       "prompt_lang": "zh",
       "gender": "male"
     },
     "溫暖男聲": {
       "label": "溫暖男聲（像老師說故事）",
       "ref_audio": "preset_voices/taiwan_male_warm.wav",
-      "prompt_text": "從前從前，有一個小村莊，住著一位很特別的老師。",
+      "prompt_text": "從前從前，有一個小村莊，住著一位很特別的老師，他教會大家許多道理。",
       "prompt_lang": "zh",
       "gender": "male"
     },
     "元氣女聲": {
       "label": "元氣女聲（充滿熱情）",
       "ref_audio": "preset_voices/taiwan_female_energetic.wav",
-      "prompt_text": "哇！這真的太厲害了，我們一起來看看吧！",
+      "prompt_text": "哇！這真的太厲害了，我們一起來看看吧，絕對會讓你大開眼界！",
       "prompt_lang": "zh",
       "gender": "female"
     }

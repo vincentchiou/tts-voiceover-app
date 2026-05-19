@@ -227,9 +227,7 @@ function initButtons() {
 
   // 系統安裝按鈕
   document.getElementById("installBtn").addEventListener("click", startInstall);
-  document.getElementById("downloadCosyvoiceBtn").addEventListener("click", () => downloadModel("cosyvoice2-0.5b"));
   document.getElementById("downloadWhisperBtn").addEventListener("click", () => downloadModel("faster-whisper-medium"));
-  document.getElementById("repairCosyvoiceBtn").addEventListener("click", repairCosyvoice);
 }
 
 // ── 表單驗證 ─────────────────────────────────────────────
@@ -397,17 +395,10 @@ async function approveAndSynthesize() {
   try {
     const sysRes = await fetch(`${API}/system/check`);
     const sysData = await sysRes.json();
-    if (!sysData.components.cosyvoice_code) {
-      showToast("⚠️ 請先在「系統資訊」安裝語音引擎 CosyVoice2", "error");
+    if (!sysData.components.gptsovits_code || !sysData.components.gptsovits_model) {
+      showToast("⚠️ 尚未安裝 GPT-SoVITS，請先執行 setup_gptsovits.ps1", "error");
       btn.disabled = false; btn.textContent = "✅ 確認，開始合成語音";
       // 自動展開系統資訊區塊提示使用者
-      const body = document.getElementById("systemInfoBody");
-      if (body.classList.contains("hidden")) toggleSystemInfo();
-      return;
-    }
-    if (!sysData.components.cosyvoice_model) {
-      showToast("⚠️ 請先在「系統資訊」下載 CosyVoice2 模型（1.5GB）", "error");
-      btn.disabled = false; btn.textContent = "✅ 確認，開始合成語音";
       const body = document.getElementById("systemInfoBody");
       if (body.classList.contains("hidden")) toggleSystemInfo();
       return;
@@ -545,10 +536,10 @@ async function loadSystemInfo() {
         </span>
       </div>
       <div class="hw-item">
-        <span class="hw-label">CosyVoice2</span>
+        <span class="hw-label">GPT-SoVITS v4</span>
         <span class="hw-value">
-          <span class="status-dot ${data.components.cosyvoice ? "status-ok" : "status-warn"}"></span>
-          ${data.components.cosyvoice ? "已安裝" : "未安裝"}
+          <span class="status-dot ${data.components.gptsovits ? "status-ok" : "status-warn"}"></span>
+          ${data.components.gptsovits ? "已安裝" : "未安裝"}
         </span>
       </div>
       <div class="hw-item">
@@ -569,29 +560,13 @@ async function loadSystemInfo() {
 
     // 各區塊獨立判斷（可同時顯示）
     const needRuntimeInstall = !data.components.ffmpeg;
-    const needCosyvoice = !data.components.cosyvoice;  // 任何一個環節缺失都算需要
+    const needGptsovits = !data.components.gptsovits;  // 程式碼或模型或 marker 任一缺失
     const needWhisper   = !data.components.whisper;
 
-    // CosyVoice 按鈕文字依狀態調整
-    const cvBtn = document.getElementById("downloadCosyvoiceBtn");
-    if (!data.components.cosyvoice_code) {
-      cvBtn.textContent = "⬇️ 安裝語音引擎 CosyVoice2（程式碼 + 模型，首次約 20 分鐘）";
-    } else if (!data.components.cosyvoice_model) {
-      cvBtn.textContent = "⬇️ 下載語音模型 CosyVoice2（1.5GB）";
-    } else {
-      cvBtn.textContent = "⬇️ 重新安裝語音引擎 CosyVoice2";
-    }
-
-    // 顯示「補裝套件」區塊：已有 code + model 但 marker 不存在（依賴不完整）
-    const needRepair = data.components.cosyvoice_code
-                    && data.components.cosyvoice_model
-                    && !data.components.cosyvoice;
-
     document.getElementById("installSection").classList.toggle("hidden", !needRuntimeInstall);
-    document.getElementById("downloadModelsSection").classList.toggle("hidden", !needCosyvoice && !needWhisper);
-    document.getElementById("downloadCosyvoiceBtn").classList.toggle("hidden", !needCosyvoice);
+    document.getElementById("gptsovitsHintSection").classList.toggle("hidden", !needGptsovits);
+    document.getElementById("downloadModelsSection").classList.toggle("hidden", !needWhisper);
     document.getElementById("downloadWhisperBtn").classList.toggle("hidden", !needWhisper);
-    document.getElementById("repairSection").classList.toggle("hidden", !needRepair);
 
   } catch {
     // 後端尚未啟動，等待
@@ -649,34 +624,8 @@ function pollInstallProgress() {
   }, 1000);
 }
 
-async function repairCosyvoice() {
-  const btn = document.getElementById("repairCosyvoiceBtn");
-  btn.disabled = true; btn.textContent = "補裝中...";
-
-  await fetch(`${API}/setup/repair-cosyvoice`, { method: "POST" });
-
-  const timer = setInterval(async () => {
-    try {
-      const res = await fetch(`${API}/setup/progress/once`);
-      const data = await res.json();
-      btn.textContent = `補裝中 ${data.percent}%... ${data.step}`;
-      if (data.stage === "complete") {
-        clearInterval(timer);
-        showToast("✓ 套件補裝完成！請重試語音合成", "success");
-        btn.textContent = "✓ 補裝完成";
-        loadSystemInfo();
-      } else if (data.stage === "error") {
-        clearInterval(timer);
-        showToast("❌ 補裝失敗：" + data.error, "error");
-        btn.disabled = false; btn.textContent = "🔧 補裝 CosyVoice2 缺失套件";
-      }
-    } catch {}
-  }, 1200);
-}
-
 async function downloadModel(modelId) {
-  const btnId = modelId === "cosyvoice2-0.5b" ? "downloadCosyvoiceBtn" : "downloadWhisperBtn";
-  const btn = document.getElementById(btnId);
+  const btn = document.getElementById("downloadWhisperBtn");
   btn.disabled = true; btn.textContent = "下載中...";
 
   await fetch(`${API}/models/download`, {

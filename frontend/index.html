@@ -261,26 +261,22 @@
         <div class="progress-msg hidden" id="installProgressMsg"></div>
         <button class="btn btn-primary mt-1" id="installBtn">🛠️ 自動安裝環境</button>
       </div>
+      <div id="gptsovitsHintSection" class="hidden mt-2">
+        <p style="font-size:0.88rem;color:#ff6b35;margin-bottom:0.8rem">
+          ⚠️ 尚未安裝 GPT-SoVITS v4 語音引擎（約 6.3 GB 模型）。<br>
+          請開啟 PowerShell 在專案資料夾執行：
+          <code style="display:block;margin-top:0.4rem;padding:0.4rem;background:#fff3e0;border-radius:6px;font-size:0.82rem">
+            .\setup_gptsovits.ps1
+          </code>
+          安裝完成後重啟本程式即可。
+        </p>
+      </div>
       <div id="downloadModelsSection" class="hidden mt-2">
         <p style="font-size:0.88rem;color:var(--muted);margin-bottom:0.8rem">
-          📦 請下載所需模型（可個別下載）
+          📦 可選下載 Whisper 模型（YouTube 字幕擷取需要）
         </p>
-        <div class="gap-row">
-          <button class="btn btn-outline" id="downloadCosyvoiceBtn" style="flex:1">
-            ⬇️ 下載語音模型 CosyVoice2（1.5GB）
-          </button>
-          <button class="btn btn-outline" id="downloadWhisperBtn" style="flex:1">
-            ⬇️ 下載 Whisper 模型（1.5GB，YouTube 用）
-          </button>
-        </div>
-      </div>
-      <div id="repairSection" class="hidden mt-2">
-        <p style="font-size:0.88rem;color:#ff6b35;margin-bottom:0.8rem">
-          ⚠️ CosyVoice2 已安裝但缺少部分套件，請點下方按鈕補裝（約 2-5 分鐘）
-        </p>
-        <button class="btn btn-outline" id="repairCosyvoiceBtn"
-                style="border-color:#ff6b35;color:#ff6b35">
-          🔧 補裝 CosyVoice2 缺失套件
+        <button class="btn btn-outline" id="downloadWhisperBtn" style="width:100%">
+          ⬇️ 下載 Whisper 模型（1.5GB，YouTube 用）
         </button>
       </div>
     </div>
