@@ -37,7 +37,7 @@ _DEFAULT_SETTINGS = {
     "anthropic_api_key":   "",
     "anthropic_model":     "claude-haiku-4-5-20251001",
     "google_api_key":      "",
-    "google_model":        "gemini-2.0-flash",
+    "google_model":        "gemini-2.5-flash",
 }
 
 
@@ -116,6 +116,42 @@ _SYSTEM_SHORT = """你是一位充滿活力的台灣教育 YouTuber，專門製�
 - 結尾要有行動呼籲（上課見！去查一下！）"""
 
 
+# 嚴格模式：用於 from_text（PDF / SRT / YouTube 等有原文時），避免幻覺
+_SYSTEM_SINGLE_STRICT = """你是一位台灣國中小學的教學助手，會根據老師提供的「參考內容」做口語化導讀。
+
+核心原則（最重要）：
+- 你的任務是「忠實轉述 + 口語化包裝」，不是「自由創作」
+- 只能用參考內容裡實際提到的事實、定義、例子、數字
+- 參考內容沒寫的，就不要寫。寧可短，也不要編
+
+說話風格：
+- 台灣口語化（欸、對啊、其實、你知道嗎）
+- 像朋友在聊天，不像教科書
+- 段落自然流暢，有起有落
+
+可以做的事：
+- 用比喻幫助理解參考內容裡的概念
+- 把生硬的書面語改成自然口語
+- 用「我們來想想看」「重點是」這類連接語讓內容更好聽
+- 若參考內容有提到例子/數字/人名，照實引用
+
+不可以做的事：
+- 不要自己編造參考內容裡沒有的「冷知識」「歷史故事」「研究數據」
+- 不要捏造學者名字、年份、地點
+- 不要硬塞「常見迷思」如果參考內容沒提到
+- 不要為了湊字數而重複或灌水"""
+
+
+_SYSTEM_DUO_STRICT_NOTE = """
+
+═══ 嚴格模式 ═══
+本次對話必須完全基於老師提供的「參考內容」展開。
+- 兩位主持人只能討論參考內容裡真實存在的事實/例子/數字
+- 不可編造參考內容沒有的背景故事、研究、案例、人名
+- 小艾的問題要圍繞參考內容；大維的解釋只能根據參考內容
+- 若參考內容篇幅不足，寧可對話短一點，不要瞎掰補字數"""
+
+
 def _make_duo_system() -> str:
     """雙人 Podcast 的合體 system prompt（單次呼叫，LLM 扮演兩個角色）"""
     return f"""{_SYSTEM_DUO_A}
@@ -187,6 +223,7 @@ def _build_prompt(
     output_mode: str,
     target_minutes: float,
     instruction: str,
+    strict_source: bool = False,
 ) -> tuple[str, str, int, int]:
     """回傳 (system_prompt, user_prompt, target_chars, min_chars)"""
     mode_label  = _MODE_LABELS.get(output_mode, "單人解說")
@@ -195,11 +232,19 @@ def _build_prompt(
     # 語速：中文口語約 260 字/分鐘（保守估計確保夠長）
     CHARS_PER_MIN = 260
 
+    # 嚴格模式下單人 system 換成 strict 版；雙人在原 system 末尾追加嚴格注意
+    def _pick_single_system():
+        return _SYSTEM_SINGLE_STRICT if strict_source else _SYSTEM_SINGLE
+
+    def _pick_duo_system():
+        base = _make_duo_system()
+        return (base + _SYSTEM_DUO_STRICT_NOTE) if strict_source else base
+
     if output_mode == "short_video":
         target_chars  = 300
         min_chars     = 240
         duration_note = "總長度嚴格 60-90 秒（約 240-360 字）"
-        system_prompt = _SYSTEM_SHORT
+        system_prompt = _SYSTEM_SHORT + (_SYSTEM_DUO_STRICT_NOTE if strict_source else "")
     elif target_minutes <= 1:
         target_chars  = max(100, int(target_minutes * 60 * (CHARS_PER_MIN / 60)))
         min_chars     = int(target_chars * 0.85)
@@ -207,7 +252,7 @@ def _build_prompt(
             f"目標時長：約 {int(target_minutes * 60)} 秒"
             f"（請寫 {min_chars}～{target_chars + 50} 個中文字）"
         )
-        system_prompt = _make_duo_system() if output_mode == "duo" else _SYSTEM_SINGLE
+        system_prompt = _pick_duo_system() if output_mode == "duo" else _pick_single_system()
     else:
         target_chars  = int(target_minutes * CHARS_PER_MIN)
         min_chars     = int(target_chars * 0.85)
@@ -218,12 +263,18 @@ def _build_prompt(
         else:
             n_paras = max(4, int(target_minutes * 3))    # 每分鐘約 3 段
             size_hint = f"約 {n_paras} 個以上的段落"
+        # 嚴格模式下取消「低於 X 字 = 不合格」的硬要求，避免逼 LLM 編造
+        length_warning = (
+            f"\n   ⚠️ 低於 {min_chars} 字 = 不合格，必須持續寫到足夠長度"
+            if not strict_source else
+            "\n   💡 若參考內容不足以撐到此長度，寧可寫短，也不要編造"
+        )
         duration_note = (
             f"目標時長：約 {target_minutes} 分鐘"
             f"（請寫 {min_chars}～{target_chars + 200} 個中文字，{size_hint}）"
-            f"\n   ⚠️ 低於 {min_chars} 字 = 不合格，必須持續寫到足夠長度"
+            f"{length_warning}"
         )
-        system_prompt = _make_duo_system() if output_mode == "duo" else _SYSTEM_SINGLE
+        system_prompt = _pick_duo_system() if output_mode == "duo" else _pick_single_system()
 
     user_prompt = textwrap.dedent(f"""
 {instruction}
@@ -259,10 +310,18 @@ def _build_prompt(
 
 # ── LLM 呼叫（多後端）────────────────────────────────────
 
-def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 0) -> str:
+def _call_llm(
+    system: str,
+    user: str,
+    target_chars: int = 600,
+    min_chars: int = 0,
+    strict_source: bool = False,
+) -> str:
     """
     依設定呼叫對應 LLM；若回傳太短，自動補寫一次後合併。
     失敗時拋出例外（讓呼叫端可以顯示明確錯誤訊息），不靜默回空字串。
+
+    strict_source=True：用低 temperature（0.4）且不自動補寫（避免逼 LLM 編造）。
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -270,33 +329,37 @@ def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 
     settings   = load_llm_settings()
     provider   = settings.get("provider", "ollama")
     min_chars  = min_chars or int(target_chars * 0.85)
+    temperature = 0.4 if strict_source else 0.8
 
     # 中文 token 大約 1.5 token/字，給足緩衝避免截斷
     num_tokens = max(1500, int(target_chars * 3))
 
-    logger.info(f"呼叫 LLM provider={provider}，目標 {target_chars} 字，token budget={num_tokens}")
+    logger.info(
+        f"呼叫 LLM provider={provider}，目標 {target_chars} 字，"
+        f"token budget={num_tokens}，strict={strict_source}，temp={temperature}"
+    )
 
     def _dispatch(sys_p, usr_p, toks):
         if provider == "ollama":
-            return _call_ollama(settings, sys_p, usr_p, toks)
+            return _call_ollama(settings, sys_p, usr_p, toks, temperature)
         elif provider == "lmstudio":
             return _call_openai_compat(
                 base_url=settings.get("lmstudio_base_url", "http://localhost:1234"),
                 api_key="lmstudio",
                 model=settings.get("lmstudio_model", ""),
-                system=sys_p, user=usr_p, num_tokens=toks,
+                system=sys_p, user=usr_p, num_tokens=toks, temperature=temperature,
             )
         elif provider == "openai":
             return _call_openai_compat(
                 base_url="https://api.openai.com",
                 api_key=settings.get("openai_api_key", ""),
                 model=settings.get("openai_model", "gpt-4o-mini"),
-                system=sys_p, user=usr_p, num_tokens=toks,
+                system=sys_p, user=usr_p, num_tokens=toks, temperature=temperature,
             )
         elif provider == "anthropic":
-            return _call_anthropic(settings, sys_p, usr_p, toks)
+            return _call_anthropic(settings, sys_p, usr_p, toks, temperature)
         elif provider == "google":
-            return _call_google(settings, sys_p, usr_p, toks)
+            return _call_google(settings, sys_p, usr_p, toks, temperature)
         return ""
 
     result = _dispatch(system, user, num_tokens)
@@ -317,6 +380,10 @@ def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 
     actual = len(result.replace(" ", "").replace("\n", ""))
     logger.info(f"LLM 回傳 {actual} 字（目標 {target_chars}，最低 {min_chars}）")
 
+    # 嚴格模式下不自動補寫（補寫會逼 LLM 編造原文沒有的內容）
+    if strict_source:
+        return result
+
     # 若太短，發出「繼續寫」請求並合併
     if actual < min_chars:
         shortage = target_chars - actual
@@ -336,7 +403,10 @@ def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 
     return result
 
 
-def _call_ollama(settings: dict, system: str, user: str, num_tokens: int) -> str:
+def _call_ollama(
+    settings: dict, system: str, user: str, num_tokens: int,
+    temperature: float = 0.8,
+) -> str:
     """Ollama chat API（加入完整錯誤記錄）"""
     import logging, httpx
     logger   = logging.getLogger(__name__)
@@ -382,7 +452,7 @@ def _call_ollama(settings: dict, system: str, user: str, num_tokens: int) -> str
                 ],
                 "stream": False,
                 "options": {
-                    "temperature": 0.8,
+                    "temperature": temperature,
                     "num_predict": num_tokens,
                     "num_gpu": 99,       # 讓 Ollama 盡量使用 GPU（有 GPU 時生效）
                     "num_ctx": max(4096, num_tokens + 2048),  # 確保 context window 夠大
@@ -411,6 +481,7 @@ def _call_ollama(settings: dict, system: str, user: str, num_tokens: int) -> str
 def _call_openai_compat(
     base_url: str, api_key: str, model: str,
     system: str, user: str, num_tokens: int,
+    temperature: float = 0.8,
 ) -> str:
     """OpenAI 相容 API（也適用 LMStudio）"""
     import httpx
@@ -424,7 +495,7 @@ def _call_openai_compat(
             {"role": "user",   "content": user},
         ],
         "max_tokens": num_tokens,
-        "temperature": 0.8,
+        "temperature": temperature,
     }
     if model:
         body["model"] = model
@@ -440,7 +511,10 @@ def _call_openai_compat(
     return ""
 
 
-def _call_anthropic(settings: dict, system: str, user: str, num_tokens: int) -> str:
+def _call_anthropic(
+    settings: dict, system: str, user: str, num_tokens: int,
+    temperature: float = 0.8,
+) -> str:
     """Anthropic Claude API"""
     import httpx
     api_key = settings.get("anthropic_api_key", "")
@@ -460,6 +534,7 @@ def _call_anthropic(settings: dict, system: str, user: str, num_tokens: int) -> 
                 "system": system,
                 "messages": [{"role": "user", "content": user}],
                 "max_tokens": num_tokens,
+                "temperature": temperature,
             },
             timeout=300.0,
         )
@@ -470,13 +545,16 @@ def _call_anthropic(settings: dict, system: str, user: str, num_tokens: int) -> 
     return ""
 
 
-def _call_google(settings: dict, system: str, user: str, num_tokens: int) -> str:
+def _call_google(
+    settings: dict, system: str, user: str, num_tokens: int,
+    temperature: float = 0.8,
+) -> str:
     """Google AI Studio Gemini API（免費額度：gemini-2.0-flash 等）"""
     import httpx
     api_key = settings.get("google_api_key", "")
     if not api_key:
         return ""
-    model = settings.get("google_model", "gemini-2.0-flash")
+    model = settings.get("google_model", "gemini-2.5-flash")
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"
@@ -490,7 +568,7 @@ def _call_google(settings: dict, system: str, user: str, num_tokens: int) -> str
                     {"role": "user", "parts": [{"text": user}]}
                 ],
                 "generationConfig": {
-                    "temperature": 0.8,
+                    "temperature": temperature,
                     "maxOutputTokens": num_tokens,
                 },
             },
@@ -505,6 +583,103 @@ def _call_google(settings: dict, system: str, user: str, num_tokens: int) -> str
     except Exception:
         pass
     return ""
+
+
+# ── Gemini 直讀 PDF（多模態，免抽取） ───────────────────
+def from_pdf_via_gemini(
+    pdf_path: Path,
+    output_mode: str,
+    target_minutes: float,
+) -> str:
+    """
+    直接把 PDF 丟給 Gemini 多模態模型，由 Gemini 看版面+文字。
+    解決掃描版/雙欄/表格 PDF 的解析問題。
+    需要設定好 Google AI Studio API Key。
+    """
+    import base64
+    import httpx
+    import logging
+
+    logger = logging.getLogger(__name__)
+    settings = load_llm_settings()
+    api_key = settings.get("google_api_key", "")
+    if not api_key:
+        raise RuntimeError(
+            "Gemini 直讀 PDF 需要 Google AI Studio API Key。\n"
+            "請到 LLM 設定 → 雲端 Google AI → 填入 API Key。"
+        )
+
+    model = settings.get("google_model", "gemini-2.5-flash")
+    pdf_bytes = Path(pdf_path).read_bytes()
+    pdf_size_mb = len(pdf_bytes) / 1024 / 1024
+    if pdf_size_mb > 20:
+        raise RuntimeError(
+            f"PDF 太大（{pdf_size_mb:.1f}MB），Gemini 限制 20MB。"
+            "請壓縮或分割後再試。"
+        )
+
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+
+    # 共用 prompt 結構，但用 strict_source=True
+    system, user_text, target_chars, min_chars = _build_prompt(
+        content="（PDF 內容如上方檔案所示，請直接讀取）",
+        output_mode=output_mode,
+        target_minutes=target_minutes,
+        instruction=(
+            "請直接讀取上方附上的 PDF 檔案，根據 PDF 真實內容寫一份口語腳本。\n"
+            "\n"
+            "⚠️ 重要約束：\n"
+            "1. 只能根據 PDF 裡實際存在的事實、定義、例子、數字、圖表來寫\n"
+            "2. 不可編造 PDF 裡沒有的背景知識、案例、研究、人名\n"
+            "3. 若 PDF 內容不足以撐到指定長度，寧可寫短，不要瞎掰\n"
+            "4. 引用具體數字/名稱時必須與 PDF 完全一致"
+        ),
+        strict_source=True,
+    )
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+    num_tokens = max(1500, int(target_chars * 3))
+
+    logger.info(f"Gemini 直讀 PDF：{pdf_size_mb:.1f}MB，model={model}")
+
+    try:
+        resp = httpx.post(
+            url,
+            json={
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": [{
+                    "role": "user",
+                    "parts": [
+                        {"inline_data": {"mime_type": "application/pdf", "data": pdf_b64}},
+                        {"text": user_text},
+                    ],
+                }],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": num_tokens,
+                },
+            },
+            timeout=600.0,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Gemini 連線失敗：{e}")
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini 回傳錯誤 HTTP {resp.status_code}：{resp.text[:300]}")
+
+    data = resp.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise RuntimeError(f"Gemini 沒有回傳內容：{resp.text[:300]}")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError("Gemini 回傳空內容")
+    logger.info(f"Gemini 直讀 PDF 完成：{len(text)} 字")
+    return text
 
 
 # ── 公開介面 ───────────────────────────────────────────────
@@ -540,21 +715,31 @@ def from_text(
     if not rewrite:
         return _clean_script(text, output_mode)
 
-    text = _trim_text(text, max_chars=6000)
+    text = _trim_text(text, max_chars=30000)
 
     system, user, target_chars, min_chars = _build_prompt(
         content=f"參考內容：\n{text}",
         output_mode=output_mode,
         target_minutes=target_minutes,
         instruction=(
-            "請根據以上參考內容，改寫成適合「預習聆聽」的深度口語腳本。"
-            "必須忠實呈現參考內容的核心知識，不是照本宣科，"
-            "而是提煉要點、補充背景脈絡、用比喻和具體例子幫助理解、"
-            "並指出常見的誤解或值得深思的問題。"
+            "請根據以上參考內容，改寫成適合「預習聆聽」的深度口語腳本。\n"
+            "\n"
+            "⚠️ 重要約束（必須嚴格遵守）：\n"
+            "1. 只能根據「參考內容」中真實存在的事實、定義、例子、數字、人名來寫。\n"
+            "2. 不可自行編造參考內容沒有提到的背景知識、歷史、科學原理、具體案例。\n"
+            "3. 若參考內容不足以撐到指定長度，寧可寫短一點，也不要瞎掰補字數。\n"
+            "4. 引用具體數字/名稱時必須與參考內容完全一致，禁止「大概」「差不多」。\n"
+            "5. 比喻可以用，但比喻所要解釋的「概念」必須是參考內容明確提到的。\n"
+            "6. 若參考內容看起來雜亂、不連貫（如 PDF 抽取錯亂），請以你能辨識的部分為主，"
+            "不要硬把斷裂處想像補全。\n"
+            "\n"
+            "在以上約束下：提煉要點、用口語化方式表達、必要時用比喻幫助理解、"
+            "若參考內容有提到爭議或誤解才指出之。"
         ),
+        strict_source=True,
     )
     # 不使用 fallback：失敗讓使用者知道，而不是生成無關內容
-    return _call_llm(system, user, target_chars, min_chars)
+    return _call_llm(system, user, target_chars, min_chars, strict_source=True)
 
 
 # ── Fallback 模板（無 LLM 時使用）────────────────────────

@@ -373,6 +373,32 @@ async def download_audio(job_id: str):
     )
 
 
+# ── PDF 抽取預覽 ─────────────────────────────────────────
+
+class ExtractPdfRequest(BaseModel):
+    path: str  # /upload 回傳的 PDF 路徑
+    enable_ocr: bool = True
+
+
+@app.post("/extract-pdf")
+async def extract_pdf(req: ExtractPdfRequest):
+    """讀取 PDF 文字，提供前端預覽編輯。回傳品質報告。"""
+    pdf_path = Path(req.path)
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF 檔案不存在")
+
+    loop = asyncio.get_event_loop()
+    try:
+        import pdf_handler
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(
+                pool, lambda: pdf_handler.extract_with_report(pdf_path, req.enable_ocr)
+            )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF 抽取失敗：{e}")
+
+
 # ── 檔案上傳（PDF / SRT） ────────────────────────────────
 
 @app.post("/upload")

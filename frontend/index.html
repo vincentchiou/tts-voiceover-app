@@ -67,6 +67,34 @@
         <div class="upload-text">點擊或拖曳 PDF 講義到這裡</div>
         <div class="upload-name" id="pdfFileName"></div>
       </div>
+
+      <!-- PDF 處理模式選擇 -->
+      <div id="pdfModeSection" class="hidden" style="margin-top:14px;">
+        <label style="font-weight:600;">PDF 處理方式：</label>
+        <div class="radio-group" style="margin-top:6px;">
+          <label class="radio-option">
+            <input type="radio" name="pdfMode" value="extract" checked />
+            <span>📝 抽取文字後預覽（本地處理，可手動修正）</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="pdfMode" value="gemini" />
+            <span>🌈 Gemini 直接讀 PDF（雲端，雙欄/掃描/表格較準，需 Google API Key）</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- PDF 抽取預覽區 -->
+      <div id="pdfPreviewSection" class="hidden" style="margin-top:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <label style="font-weight:600;">📋 抽取結果預覽（可編輯，AI 將以此為準）：</label>
+          <span id="pdfPreviewStats" style="font-size:.85em; color:#666;"></span>
+        </div>
+        <div id="pdfPreviewWarnings" class="hidden" style="background:#fff4e0; border-left:4px solid #ff9800; padding:8px 12px; margin-bottom:6px; border-radius:4px; font-size:.9em;"></div>
+        <textarea id="pdfPreviewText" rows="12" style="width:100%; font-family:'Consolas',monospace; font-size:.92em;" placeholder="PDF 抽取結果會顯示在這裡，你可以直接編輯..."></textarea>
+        <div style="margin-top:6px; font-size:.85em; color:#666;">
+          💡 提示：抽取錯亂的部分請直接刪除或修正，這比讓 AI 自己猜更準確。
+        </div>
+      </div>
     </div>
 
     <!-- YouTube URL -->
@@ -365,10 +393,11 @@
         </p>
         <label>模型</label>
         <select id="googleModel">
-          <option value="gemini-2.0-flash">Gemini 2.0 Flash（快速、免費額度大）</option>
-          <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite（更省）</option>
-          <option value="gemini-1.5-flash">Gemini 1.5 Flash（穩定）</option>
-          <option value="gemini-1.5-pro">Gemini 1.5 Pro（強，免費額度較少）</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash（推薦，平衡速度與品質）</option>
+          <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite（免費額度最大，每天 1000 次）</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro（最強，免費額度很少：每天 25 次）</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash（舊版穩定）</option>
+          <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite（舊版省用量）</option>
         </select>
       </div>
 

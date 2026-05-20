@@ -677,3 +677,34 @@ audio {
   border: 1px solid rgba(34,197,94,0.3);
   color: #15803d;
 }
+
+/* ── PDF 處理模式 radio ─────────────────────────────── */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.15s;
+}
+.radio-option:hover {
+  border-color: #ec4899;
+  background: #fef3f8;
+}
+.radio-option input[type="radio"] {
+  accent-color: #ec4899;
+  width: 18px;
+  height: 18px;
+}
+.radio-option:has(input:checked) {
+  border-color: #ec4899;
+  background: linear-gradient(135deg, rgba(236,72,153,0.08), rgba(168,85,247,0.08));
+}

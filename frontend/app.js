@@ -31,6 +31,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initVoiceUploads();
   initButtons();
   initFileDropZone();
+  initPdfModeToggle();
   initLlmSettings();
   loadVoices();
   loadSystemInfo();
@@ -185,6 +186,11 @@ function initFileDropZone() {
 
 async function handlePdfUpload(file) {
   document.getElementById("pdfFileName").textContent = "上傳中... " + file.name;
+  // 重置狀態
+  state.pdfExtractedText = "";
+  document.getElementById("pdfPreviewSection").classList.add("hidden");
+  document.getElementById("pdfModeSection").classList.add("hidden");
+
   const form = new FormData();
   form.append("file", file);
   try {
@@ -193,9 +199,73 @@ async function handlePdfUpload(file) {
     if (!res.ok) throw new Error(data.detail);
     state.pdfUploadPath = data.path;
     document.getElementById("pdfFileName").textContent = "✓ " + file.name;
+    document.getElementById("pdfModeSection").classList.remove("hidden");
+
+    // 預設「抽取文字」模式：自動執行一次抽取並顯示預覽
+    await extractAndPreviewPdf();
   } catch (e) {
     document.getElementById("pdfFileName").textContent = "✗ 上傳失敗：" + e.message;
   }
+}
+
+async function extractAndPreviewPdf() {
+  if (!state.pdfUploadPath) return;
+  const previewSection = document.getElementById("pdfPreviewSection");
+  const textArea = document.getElementById("pdfPreviewText");
+  const stats = document.getElementById("pdfPreviewStats");
+  const warnings = document.getElementById("pdfPreviewWarnings");
+
+  previewSection.classList.remove("hidden");
+  textArea.value = "";
+  textArea.placeholder = "抽取中，請稍候...";
+  stats.textContent = "";
+  warnings.classList.add("hidden");
+
+  try {
+    const res = await fetch(`${API}/extract-pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: state.pdfUploadPath, enable_ocr: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "抽取失敗");
+
+    textArea.value = data.text || "";
+    textArea.placeholder = "";
+    const charCount = (data.text || "").length;
+    stats.textContent = `${data.pages} 頁，${charCount} 字${data.ocr_pages ? `，含 ${data.ocr_pages} 頁 OCR` : ""}`;
+
+    if (data.warnings && data.warnings.length) {
+      warnings.innerHTML = "⚠️ " + data.warnings.map(w => escapeHtml(w)).join("<br>⚠️ ");
+      warnings.classList.remove("hidden");
+    }
+  } catch (e) {
+    textArea.placeholder = "✗ 抽取失敗：" + e.message;
+    showToast("PDF 抽取失敗：" + e.message, "error");
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+// 監聽 PDF 模式切換
+function initPdfModeToggle() {
+  document.addEventListener("change", (e) => {
+    if (e.target.name !== "pdfMode") return;
+    const mode = e.target.value;
+    const previewSection = document.getElementById("pdfPreviewSection");
+    if (mode === "gemini") {
+      previewSection.classList.add("hidden");
+    } else {
+      // 回到抽取模式：若還沒抽取就現在抽
+      if (state.pdfUploadPath && !document.getElementById("pdfPreviewText").value) {
+        extractAndPreviewPdf();
+      } else {
+        previewSection.classList.remove("hidden");
+      }
+    }
+  });
 }
 
 // ── 按鈕初始化 ───────────────────────────────────────────
@@ -237,6 +307,11 @@ function validateStep1() {
     if (!v) return showToast("請輸入教學主題", "error"), false;
   } else if (state.inputType === "pdf") {
     if (!state.pdfUploadPath) return showToast("請先上傳 PDF 檔案", "error"), false;
+    const mode = (document.querySelector('input[name="pdfMode"]:checked') || {}).value || "extract";
+    if (mode === "extract") {
+      const text = document.getElementById("pdfPreviewText").value.trim();
+      if (!text) return showToast("PDF 抽取結果為空，請改用「Gemini 直讀」模式或檢查檔案", "error"), false;
+    }
   } else if (state.inputType === "youtube") {
     const v = document.getElementById("youtubeUrl").value.trim();
     if (!v || !v.startsWith("http")) return showToast("請輸入有效的 YouTube 網址", "error"), false;
@@ -257,8 +332,14 @@ function getInputContent() {
       const note = document.getElementById("topicNote").value.trim();
       return note ? `${topic}\n\n補充：${note}` : topic;
     }
-    case "pdf":
+    case "pdf": {
+      // 「抽取模式」送已預覽/編輯的文字；「Gemini 直讀」送 PDF 路徑
+      const mode = (document.querySelector('input[name="pdfMode"]:checked') || {}).value || "extract";
+      if (mode === "extract") {
+        return document.getElementById("pdfPreviewText").value.trim();
+      }
       return state.pdfUploadPath;
+    }
     case "youtube":
       return document.getElementById("youtubeUrl").value.trim();
     case "srt":
@@ -270,7 +351,10 @@ function getInputContent() {
 
 function getActualInputType() {
   if (state.inputType === "srt") return state.srtSubtype; // "srt" or "script"
-  if (state.inputType === "pdf") return "pdf";
+  if (state.inputType === "pdf") {
+    const mode = (document.querySelector('input[name="pdfMode"]:checked') || {}).value || "extract";
+    return mode === "gemini" ? "pdf_gemini" : "text";  // text = 已抽取文字走嚴格 LLM 改寫
+  }
   return state.inputType;
 }
 
@@ -455,6 +539,9 @@ function restart() {
   document.getElementById("srtText").value = "";
   document.getElementById("scriptText").value = "";
   document.getElementById("pdfFileName").textContent = "";
+  document.getElementById("pdfPreviewText").value = "";
+  document.getElementById("pdfPreviewSection").classList.add("hidden");
+  document.getElementById("pdfModeSection").classList.add("hidden");
   document.getElementById("voiceCloneName").textContent = "";
   document.getElementById("voiceCloneForm").classList.add("hidden");
   goToStep(1);
@@ -760,7 +847,7 @@ async function loadLlmSettings() {
     if (p === "lmstudio") loadLmstudioModels();
     _setVal("openaiModel",     data.openai_model      || "gpt-4o-mini");
     _setVal("anthropicModel",  data.anthropic_model   || "claude-haiku-4-5-20251001");
-    _setVal("googleModel",     data.google_model      || "gemini-2.0-flash");
+    _setVal("googleModel",     data.google_model      || "gemini-2.5-flash");
     // API Key 顯示佔位（後端遮蔽實際 key）
     if (data.openai_api_key)    _setVal("openaiApiKey",    "••••••••");
     if (data.anthropic_api_key) _setVal("anthropicApiKey", "••••••••");

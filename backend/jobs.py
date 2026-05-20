@@ -214,6 +214,62 @@ def _process_job(job_id: str):
                 target_minutes=job.target_minutes,
             )
 
+        elif job.input_type == "pdf_gemini":
+            # 用 Gemini 多模態直讀 PDF（不抽取文字，交給 Gemini 看版面）
+            _update(job_id, progress=10, message="Gemini 直接讀 PDF 中（可能需 30-60 秒）...")
+            try:
+                script_text = content.from_pdf_via_gemini(
+                    pdf_path=Path(job.raw_content),
+                    output_mode=job.output_mode,
+                    target_minutes=job.target_minutes,
+                )
+            except RuntimeError as e:
+                # Gemini 額度耗盡 / 連線失敗 → 自動退回本地抽取 + 本地 LLM 改寫
+                err_msg = str(e)
+                is_quota = "429" in err_msg or "quota" in err_msg.lower() or "rate" in err_msg.lower()
+                if not is_quota:
+                    raise
+                # 檢查 LLM 改寫會用哪個 provider
+                llm_settings = content.load_llm_settings()
+                rewrite_provider = llm_settings.get("provider", "ollama")
+                if rewrite_provider == "google":
+                    raise RuntimeError(
+                        "Gemini 額度耗盡。你目前 LLM provider 也是 Google，"
+                        "無法自動 fallback。請：\n"
+                        "1. 等 1 分鐘後重試，或\n"
+                        "2. 到 LLM 設定切換到本地 LMStudio / Ollama，或\n"
+                        "3. 改選「📝 抽取文字後預覽」模式\n"
+                        f"原始錯誤：{err_msg[:200]}"
+                    )
+                _update(
+                    job_id, progress=15,
+                    message=f"⚠️ Gemini 額度耗盡，自動切換本地抽取 + {rewrite_provider} 改寫..."
+                )
+                import pdf_handler
+                extracted = pdf_handler.extract(Path(job.raw_content))
+                if not extracted.strip():
+                    raise RuntimeError(
+                        "Gemini 額度耗盡，且本地 PDF 抽取為空（可能是掃描版 PDF）。\n"
+                        "請等 1 分鐘後重試 Gemini，或裝 Tesseract 啟用 OCR。\n"
+                        f"原始錯誤：{err_msg[:200]}"
+                    )
+                _update(job_id, progress=30, message=f"本地 {rewrite_provider} 改寫中...")
+                script_text = content.from_text(
+                    text=extracted,
+                    output_mode=job.output_mode,
+                    target_minutes=job.target_minutes,
+                )
+
+        elif job.input_type == "text":
+            # 已抽取/已預覽的文字（含使用者編輯），走嚴格忠於原文的 LLM 改寫
+            _update(job_id, progress=20, message="AI 改寫成口語腳本...")
+            script_text = content.from_text(
+                text=job.raw_content,
+                output_mode=job.output_mode,
+                target_minutes=job.target_minutes,
+                rewrite=True,
+            )
+
         elif job.input_type == "youtube":
             _update(job_id, progress=10, message="下載影片音訊...")
             import video_handler

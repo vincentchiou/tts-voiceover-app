@@ -34,7 +34,9 @@ class SystemInfo:
     # 已安裝元件狀態
     ffmpeg_ready: bool = False
     gptsovits_ready: bool = False
-    whisper_ready: bool = False
+    whisper_ready: bool = False        # whisper 模型已下載
+    yt_dlp_ready: bool = False         # yt-dlp 套件已安裝
+    faster_whisper_pkg_ready: bool = False  # faster-whisper 套件已安裝
 
 
 def _run(cmd: list[str], timeout: int = 5) -> str:
@@ -237,7 +239,25 @@ def probe() -> SystemInfo:
     )
     info.whisper_ready   = config.MARKER_WHISPER.exists()
 
+    # Python 套件偵測（後端 venv 內）
+    info.yt_dlp_ready = _python_pkg_available("yt_dlp")
+    info.faster_whisper_pkg_ready = _python_pkg_available("faster_whisper")
+
     return info
+
+
+def _python_pkg_available(module: str) -> bool:
+    """檢查後端 venv 是否能 import 指定模組（在子行程中試）"""
+    import sys
+    py = sys.executable  # 當前 process 已在 venv 內
+    try:
+        r = subprocess.run(
+            [py, "-c", f"import {module}"],
+            capture_output=True, timeout=8,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
 
 
 def probe_dict() -> dict:
@@ -264,6 +284,8 @@ def probe_dict() -> dict:
             "gptsovits_code": config.GPTSOVITS_REPO.exists(),
             "gptsovits_model": config.GPTSOVITS_PRETRAINED.exists(),
             "whisper": info.whisper_ready,
+            "yt_dlp": info.yt_dlp_ready,
+            "faster_whisper_pkg": info.faster_whisper_pkg_ready,
         },
         "ready": info.ffmpeg_ready and info.gptsovits_ready,
     }

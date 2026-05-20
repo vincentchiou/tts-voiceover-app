@@ -51,10 +51,16 @@ def transcribe(audio_path: Path) -> str:
     except ImportError:
         raise RuntimeError("faster-whisper 未安裝，請先完成環境安裝")
 
-    # 選擇裝置
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute_type = "float16" if device == "cuda" else "int8"
+    # 選擇裝置（faster-whisper 用 ctranslate2，不需要 torch）
+    device = "cpu"
+    compute_type = "int8"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device = "cuda"
+            compute_type = "float16"
+    except ImportError:
+        pass  # 無 torch 就走 CPU
 
     model_path = str(config.WHISPER_DIR)
     if not config.WHISPER_DIR.exists():
