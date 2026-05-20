@@ -61,7 +61,7 @@ def _gptsovits_python() -> str:
     return str(main_venv)
 
 
-def start(wait_seconds: int = 60) -> None:
+def start(wait_seconds: int = 300) -> None:
     """啟動 GPT-SoVITS api_v2.py，阻塞直到 port 可連線或逾時"""
     global _proc
     with _lock:

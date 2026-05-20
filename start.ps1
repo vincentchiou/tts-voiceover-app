@@ -55,8 +55,8 @@ if (-not (Test-Path $PyMarker)) { New-Item -ItemType File -Path $PyMarker -Force
 $VenvCfg = Join-Path $VenvDir "pyvenv.cfg"
 if (-not (Test-Path $VenvCfg)) {
     Write-Host "  [3/4] Creating isolated venv..." -ForegroundColor Yellow
-    # --no-system-site-packages 確保不繼承任何系統層級套件
-    & $UvExe venv $VenvDir --python 3.10 --no-system-site-packages
+    # uv venv 預設就不繼承系統套件，無需額外旗標
+    & $UvExe venv $VenvDir --python 3.10
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  [ERROR] venv creation failed" -ForegroundColor Red
         Read-Host "Press Enter to exit"; exit 1

@@ -154,6 +154,7 @@ async def get_llm_settings():
         **s,
         "openai_api_key":    "***" if s.get("openai_api_key") else "",
         "anthropic_api_key": "***" if s.get("anthropic_api_key") else "",
+        "google_api_key":    "***" if s.get("google_api_key") else "",
     }
 
 
@@ -167,6 +168,8 @@ class LlmSettingsRequest(BaseModel):
     openai_model:        Optional[str] = None
     anthropic_api_key:   Optional[str] = None
     anthropic_model:     Optional[str] = None
+    google_api_key:      Optional[str] = None
+    google_model:        Optional[str] = None
 
 
 @app.post("/settings/llm")
@@ -174,7 +177,7 @@ async def save_llm_settings(req: LlmSettingsRequest):
     current = content_mod.load_llm_settings()
     update  = {k: v for k, v in req.model_dump().items() if v is not None}
     # "***" 代表維持原值（前端沒改 key）
-    for key in ("openai_api_key", "anthropic_api_key"):
+    for key in ("openai_api_key", "anthropic_api_key", "google_api_key"):
         if update.get(key) == "***":
             update[key] = current.get(key, "")
     merged = content_mod.save_llm_settings({**current, **update})

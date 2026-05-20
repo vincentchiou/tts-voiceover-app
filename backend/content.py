@@ -12,6 +12,7 @@ content.py — 腳本生成
   lmstudio  — 本地 LMStudio（OpenAI 相容）
   openai    — OpenAI API
   anthropic — Anthropic Claude API
+  google    — Google AI Studio（Gemini API，免費額度大）
 """
 
 import json
@@ -35,6 +36,8 @@ _DEFAULT_SETTINGS = {
     "openai_model":        "gpt-4o-mini",
     "anthropic_api_key":   "",
     "anthropic_model":     "claude-haiku-4-5-20251001",
+    "google_api_key":      "",
+    "google_model":        "gemini-2.0-flash",
 }
 
 
@@ -292,6 +295,8 @@ def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 
             )
         elif provider == "anthropic":
             return _call_anthropic(settings, sys_p, usr_p, toks)
+        elif provider == "google":
+            return _call_google(settings, sys_p, usr_p, toks)
         return ""
 
     result = _dispatch(system, user, num_tokens)
@@ -303,6 +308,7 @@ def _call_llm(system: str, user: str, target_chars: int = 600, min_chars: int = 
             "lmstudio":  "請確認 LMStudio 已啟動並載入模型",
             "openai":    "請確認 OpenAI API Key 正確",
             "anthropic": "請確認 Anthropic API Key 正確",
+            "google":    "請確認 Google AI Studio API Key 正確（從 aistudio.google.com 取得）",
         }
         raise RuntimeError(
             f"LLM（{provider}）未回應或呼叫失敗。\n{hints.get(provider, '')}"
@@ -459,6 +465,43 @@ def _call_anthropic(settings: dict, system: str, user: str, num_tokens: int) -> 
         )
         if resp.status_code == 200:
             return resp.json()["content"][0]["text"].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _call_google(settings: dict, system: str, user: str, num_tokens: int) -> str:
+    """Google AI Studio Gemini API（免費額度：gemini-2.0-flash 等）"""
+    import httpx
+    api_key = settings.get("google_api_key", "")
+    if not api_key:
+        return ""
+    model = settings.get("google_model", "gemini-2.0-flash")
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+    try:
+        resp = httpx.post(
+            url,
+            json={
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": [
+                    {"role": "user", "parts": [{"text": user}]}
+                ],
+                "generationConfig": {
+                    "temperature": 0.8,
+                    "maxOutputTokens": num_tokens,
+                },
+            },
+            timeout=300.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                return "".join(p.get("text", "") for p in parts).strip()
     except Exception:
         pass
     return ""

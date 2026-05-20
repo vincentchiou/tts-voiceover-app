@@ -713,9 +713,11 @@ async function refreshLlmStatusHint() {
       ready = !!data.openai_api_key;
     } else if (p === "anthropic") {
       ready = !!data.anthropic_api_key;
+    } else if (p === "google") {
+      ready = !!data.google_api_key;
     }
 
-    const providerLabel = { ollama:"Ollama", lmstudio:"LMStudio", openai:"OpenAI", anthropic:"Anthropic" }[p] || p;
+    const providerLabel = { ollama:"Ollama", lmstudio:"LMStudio", openai:"OpenAI", anthropic:"Anthropic", google:"Google AI" }[p] || p;
     if (ready) {
       hint.className = "llm-status-hint ok";
       hint.innerHTML = `✅ 腳本生成：使用 <b>${providerLabel}</b>`;
@@ -758,9 +760,11 @@ async function loadLlmSettings() {
     if (p === "lmstudio") loadLmstudioModels();
     _setVal("openaiModel",     data.openai_model      || "gpt-4o-mini");
     _setVal("anthropicModel",  data.anthropic_model   || "claude-haiku-4-5-20251001");
+    _setVal("googleModel",     data.google_model      || "gemini-2.0-flash");
     // API Key 顯示佔位（後端遮蔽實際 key）
     if (data.openai_api_key)    _setVal("openaiApiKey",    "••••••••");
     if (data.anthropic_api_key) _setVal("anthropicApiKey", "••••••••");
+    if (data.google_api_key)    _setVal("googleApiKey",    "••••••••");
   } catch (e) {
     // 後端尚未就緒，靜默忽略
   }
@@ -782,13 +786,16 @@ async function saveLlmSettings() {
     lmstudio_model:    _getVal("lmstudioModel"),
     openai_model:      _getVal("openaiModel"),
     anthropic_model:   _getVal("anthropicModel"),
+    google_model:      _getVal("googleModel"),
   };
 
   // 只在非佔位時才送 key（避免用「••••」覆蓋真實 key）
   const oKey = _getVal("openaiApiKey");
   const aKey = _getVal("anthropicApiKey");
+  const gKey = _getVal("googleApiKey");
   if (oKey && oKey !== "••••••••") body.openai_api_key    = oKey;
   if (aKey && aKey !== "••••••••") body.anthropic_api_key = aKey;
+  if (gKey && gKey !== "••••••••") body.google_api_key    = gKey;
 
   try {
     const res = await fetch(`${API}/settings/llm`, {
