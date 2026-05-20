@@ -12,7 +12,10 @@
 - **多種輸入來源**：直接給主題 / PDF 檔案 / YouTube 連結 / SRT 字幕
 - **多家 LLM 支援**：
   - 本地：Ollama、LMStudio（OpenAI 相容）
-  - 雲端：OpenAI、Anthropic
+  - 雲端：OpenAI、Anthropic、**Google Gemini 2.5**（flash / flash-lite / pro）
+- **PDF 智慧解析**：雙欄偵測、頁首頁尾清理、Tesseract OCR fallback、品質報告
+- **PDF 預覽編輯**：解析後可在前端編輯確認再生成（避免 LLM 亂講）
+- **Gemini 直讀 PDF**：可選擇讓 Gemini 直接讀 PDF（多模態），429 配額用完自動降級到本地解析 + 本地 LLM
 - **TTS 引擎**：**GPT-SoVITS v4**（48kHz 高品質中文 TTS + zero-shot 聲音複製）
 - **6 種預設音色**：台灣女聲、台灣男聲、活潑女聲、沉穩男聲、溫暖男聲、元氣女聲
 - **音色複製**：上傳一段參考音檔（5~10 秒）即可即時複製出自訂音色
@@ -147,6 +150,7 @@ manifests/preset_voices/
 | POST   | `/jobs/{id}/approve` | 確認腳本，開始 TTS |
 | GET    | `/jobs/{id}/download` | 下載 MP3 |
 | POST   | `/upload` | 上傳 PDF / SRT / TXT |
+| POST   | `/extract-pdf` | 解析 PDF 並回傳文字 + 品質報告（含 OCR fallback） |
 
 GPT-SoVITS（內部使用，主後端自動呼叫）：
 
@@ -204,6 +208,12 @@ LLM 會輪流輸出 `主持A：...` / `主持B：...`，後端解析後分別套
 
 ## 變更紀錄
 
+- **v1.1.0（2026-05-20）**：
+  - **LLM 防幻覺**：新增 strict mode（溫度 0.4、可做/不可做清單、關閉自動補寫），PDF 內容上限由 6000 → 30000 字
+  - **PDF 智慧解析**：blocks + 雙欄偵測、頁首頁尾自動清理、Tesseract OCR fallback（掃描檔）、解析品質報告
+  - **PDF 預覽編輯**：前端可在生成前看到解析結果並編輯，避免錯誤被一路帶下去
+  - **Google Gemini 2.5 整合**：支援 flash / flash-lite / pro，可直讀 PDF（多模態），429 配額用完自動降級
+  - **YouTube 自動安裝**：yt-dlp、faster-whisper 加入 `requirements.txt` 與 `system_probe` 偵測
 - **2026-05-13**：TTS 引擎由 CosyVoice2-0.5B 換為 **GPT-SoVITS v4**（48 kHz、品質更好、原生 zero-shot）。新增 `setup_gptsovits.ps1` 一鍵安裝腳本。
 
 ---
