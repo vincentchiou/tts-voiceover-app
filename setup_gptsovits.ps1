@@ -185,6 +185,27 @@ Pip-Install @("httpx", "fastapi", "uvicorn[standard]")
 Log-Ok "依賴安裝完成"
 
 # ──────────────────────────────────────────────────────────
+# 步驟 5b：預下載 NLTK 資源（避免首次合成時因下載失敗回 400）
+Log-Info "預下載 NLTK 資源（averaged_perceptron_tagger_eng 等）..."
+$nltkScript = @"
+import nltk, sys
+pkgs = ['averaged_perceptron_tagger_eng', 'averaged_perceptron_tagger', 'cmudict', 'punkt', 'punkt_tab']
+for p in pkgs:
+    try:
+        ok = nltk.download(p, quiet=True)
+        print(f'  {p}: {ok}')
+    except Exception as e:
+        print(f'  {p}: FAILED ({e})')
+        sys.exit(1)
+"@
+& $VENV_PY -c $nltkScript
+if ($LASTEXITCODE -ne 0) {
+    Log-Warn "NLTK 資源下載失敗，首次合成可能會 400，可手動執行：python -c \"import nltk; nltk.download('averaged_perceptron_tagger_eng')\""
+} else {
+    Log-Ok "NLTK 資源下載完成"
+}
+
+# ──────────────────────────────────────────────────────────
 # 步驟 6：smoke test — 啟動 api_v2.py，確認 9880 可連線
 Log-Info "嘗試啟動 GPT-SoVITS api_v2.py（5 秒內看 9880）..."
 $proc = Start-Process -FilePath $VENV_PY `
