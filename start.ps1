@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if ($env:TTS_APP_HOME) { $AppHome = $env:TTS_APP_HOME }
-else { $AppHome = Join-Path $env:LOCALAPPDATA "TTS_App" }
+else { $AppHome = Join-Path $env:LOCALAPPDATA "TTS配音APP" }
 
 $RuntimeDir = Join-Path $AppHome "runtime"
 $UvDir      = Join-Path $RuntimeDir "uv"
