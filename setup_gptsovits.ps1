@@ -27,6 +27,7 @@ $PRETRAINED   = Join-Path $GPTSOVITS_DIR "GPT_SoVITS\pretrained_models"
 $VENV_DIR     = Join-Path $RUNTIME_DIR "gptsovits_venv"
 $DOWNLOADS    = Join-Path $APP_HOME "downloads"
 $MARKER       = Join-Path $RUNTIME_DIR ".gptsovits-installed"
+$MARKER_V121  = Join-Path $RUNTIME_DIR ".gptsovits-cu128-installed"
 
 function Log-Info($msg)    { Write-Host "[INFO] $msg" -ForegroundColor Cyan }
 function Log-Ok($msg)      { Write-Host "[ OK ] $msg" -ForegroundColor Green }
@@ -155,15 +156,20 @@ function Pip-Install($pkgs, $extra_args = @()) {
     if ($LASTEXITCODE -ne 0) { throw "pip install 失敗：$pkgs" }
 }
 
-# 偵測 NVIDIA GPU；有則裝 cu121，沒有則 cpu wheel
+# 偵測 NVIDIA GPU；RTX 50 系列需要 cu128，否則會出現 no kernel image。
 $HAS_NVIDIA = $false
+$GPU_NAME = ""
 try {
-    $nvidia = & nvidia-smi 2>$null
-    if ($LASTEXITCODE -eq 0) { $HAS_NVIDIA = $true }
+    $GPU_NAME = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
+    if ($GPU_NAME) { $HAS_NVIDIA = $true }
 } catch {}
+$IS_RTX50 = $GPU_NAME -match "RTX\s*50|RTX50|50\d{2}"
 
-Log-Info "安裝 PyTorch...（NVIDIA detected = $HAS_NVIDIA）"
-if ($HAS_NVIDIA) {
+Log-Info "安裝 PyTorch...（NVIDIA detected = $HAS_NVIDIA, GPU = $GPU_NAME）"
+if ($HAS_NVIDIA -and $IS_RTX50) {
+    Log-Info "偵測到 RTX 50 系列，使用 PyTorch cu128。"
+    Pip-Install @("torch==2.8.0", "torchaudio==2.8.0") @("--index-url", "https://download.pytorch.org/whl/cu128")
+} elseif ($HAS_NVIDIA) {
     Pip-Install @("torch==2.5.1", "torchaudio==2.5.1") @("--index-url", "https://download.pytorch.org/whl/cu121")
 } else {
     Pip-Install @("torch==2.5.1", "torchaudio==2.5.1") @("--index-url", "https://download.pytorch.org/whl/cpu")
@@ -215,17 +221,31 @@ $proc = Start-Process -FilePath $VENV_PY `
     -RedirectStandardOutput (Join-Path $RUNTIME_DIR "gptsovits_smoke.log") `
     -RedirectStandardError  (Join-Path $RUNTIME_DIR "gptsovits_smoke.err.log")
 
-Start-Sleep -Seconds 30
-$test = Test-NetConnection -ComputerName 127.0.0.1 -Port 9880 -InformationLevel Quiet
+$test = $false
+for ($i = 0; $i -lt 120; $i += 5) {
+    Start-Sleep -Seconds 5
+    if ($proc.HasExited) {
+        $errPath = Join-Path $RUNTIME_DIR "gptsovits_smoke.err.log"
+        $tail = ""
+        if (Test-Path $errPath) {
+            $tail = (Get-Content -LiteralPath $errPath -Tail 40 -Encoding UTF8) -join "`n"
+        }
+        throw "GPT-SoVITS smoke test 失敗，api_v2.py 已退出。$tail"
+    }
+    $test = Test-NetConnection -ComputerName 127.0.0.1 -Port 9880 -InformationLevel Quiet
+    if ($test) { break }
+}
+
 if ($test) {
     Log-Ok "GPT-SoVITS 服務已啟動於 http://127.0.0.1:9880"
 } else {
-    Log-Warn "30 秒內未偵測到 9880，可能仍在載入模型，請查看 runtime\gptsovits_smoke.log"
+    throw "120 秒內未偵測到 GPT-SoVITS 9880 port，請查看 runtime\gptsovits_smoke.log"
 }
 
 # 關掉測試行程
 try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
 
 New-Item -ItemType File -Force -Path $MARKER | Out-Null
+New-Item -ItemType File -Force -Path $MARKER_V121 | Out-Null
 Log-Ok "安裝完成！主後端啟動時會自動拉起 GPT-SoVITS。"
 Log-Info "下一步：執行 start.ps1 啟動主應用。"

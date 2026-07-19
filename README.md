@@ -62,14 +62,16 @@ GPT-SoVITS 程式碼與權重不入 git，請執行專用安裝腳本：
 第一次執行會自動：
 1. 下載 uv（Python 套件管理器）
 2. 安裝 Python 3.10 與主後端套件（含 Qwen/CosyVoice 需要的 `dashscope`）
-3. 建立 IndexTTS2 獨立 venv、clone 官方 repo，並下載 `IndexTeam/IndexTTS-2` checkpoints（放在 `%LOCALAPPDATA%\TTSVoiceoverApp`，避開 Windows 中文路徑編碼問題）
-4. 將 IndexTTS2 Python / checkpoints / config 路徑寫入 TTS 設定
-5. 啟動後端 FastAPI 服務（port 8765）並自動開啟瀏覽器到 `http://localhost:8765`
+3. 自動執行 GPT-SoVITS 安裝腳本，clone 官方 repo、下載 v4 pretrained/G2PW 權重、建立獨立 venv
+4. 建立 IndexTTS2 獨立 venv、clone 官方 repo，並下載 `IndexTeam/IndexTTS-2` checkpoints（放在 `%LOCALAPPDATA%\TTSVoiceoverApp`，避開 Windows 中文路徑編碼問題）
+5. 將 IndexTTS2 Python / checkpoints / config 路徑寫入 TTS 設定
+6. 啟動後端 FastAPI 服務（port 8765）並自動開啟瀏覽器到 `http://localhost:8765`
 
-IndexTTS2 首次安裝需下載大型模型，可能花較久。若暫時只想使用 GPT-SoVITS / Qwen-CosyVoice，可先設定：
+GPT-SoVITS 與 IndexTTS2 首次安裝都需要下載大型模型，可能花較久。若暫時只想略過其中一個本地引擎，可先設定：
 
 ```powershell
-$env:TTS_SKIP_INDEXTTS2_INSTALL = "1"
+$env:TTS_SKIP_GPTSOVITS_INSTALL = "1"  # 可選：略過 GPT-SoVITS
+$env:TTS_SKIP_INDEXTTS2_INSTALL = "1"   # 可選：略過 IndexTTS2
 .\start.bat
 ```
 
@@ -246,6 +248,10 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
   - **LLM 錯誤透明化**：OpenAI 相容、Anthropic、Google provider 不再吞掉 HTTP / 連線 / 回應格式錯誤
   - **安裝一致性**：前端自動安裝流程改用 `backend/requirements.txt`，避免只安裝部分依賴
   - **測試覆蓋**：新增 `tests/test_safety.py`，涵蓋路徑防護、上傳限制、段落解析與空合成防護
+- **v1.2.1（2026-07-19）**：
+  - **首次 start 完整安裝**：`start.bat` 現在會自動準備 GPT-SoVITS 與 IndexTTS2 本地環境，Qwen/CosyVoice SDK 也會隨主 requirements 安裝
+  - **Windows 中文路徑修正**：IndexTTS2 改用 `%LOCALAPPDATA%\TTSVoiceoverApp` ASCII runtime，後端可讀取 PowerShell UTF-8 BOM 設定檔
+  - **RTX 50 系列相容**：GPT-SoVITS 安裝會偵測 RTX 50 GPU 並改用 PyTorch `cu128`，避免 `no kernel image` 啟動錯誤
 - **v1.2.0（2026-07-19）**：
   - **TTS provider 可切換**：新增 GPT-SoVITS / IndexTTS2 / Qwen-CosyVoice 三種語音引擎設定
   - **IndexTTS2 支援**：首次 `start.bat` 自動 clone 官方 repo、建立獨立 venv、下載 checkpoints，並使用情緒描述引導中文口播

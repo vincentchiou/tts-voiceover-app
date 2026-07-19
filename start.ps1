@@ -1,4 +1,4 @@
-# TTS App Launcher
+﻿# TTS App Launcher
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -21,6 +21,10 @@ $IndexPython = Join-Path $IndexVenvDir "Scripts\python.exe"
 $IndexModelDir = Join-Path $IndexModelsDir "IndexTTS-2"
 $IndexMarker = Join-Path $IndexRuntimeDir ".indextts2-installed"
 $TtsSettingsFile = Join-Path $AppHome "tts_settings.json"
+$GptSetupScript = Join-Path $ScriptDir "setup_gptsovits.ps1"
+$GptRepoDir = Join-Path $ScriptDir "GPT-SoVITS"
+$GptPretrainedDir = Join-Path $GptRepoDir "GPT_SoVITS\pretrained_models"
+$GptMarker = Join-Path $RuntimeDir ".gptsovits-cu128-installed"
 $BackendDir = Join-Path $ScriptDir "backend"
 $ReqFile    = Join-Path $BackendDir "requirements.txt"
 $Port       = 8765
@@ -90,6 +94,25 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "  [OK] Packages ready" -ForegroundColor Green
 
 
+function Ensure-GptSoVITS {
+    if ($env:TTS_SKIP_GPTSOVITS_INSTALL -eq "1") {
+        Write-Host "         Skipping GPT-SoVITS install (TTS_SKIP_GPTSOVITS_INSTALL=1)" -ForegroundColor Yellow
+        return
+    }
+
+    if ((Test-Path $GptMarker) -and (Test-Path $GptRepoDir) -and (Test-Path $GptPretrainedDir)) {
+        Write-Host "         GPT-SoVITS already installed" -ForegroundColor Gray
+        return
+    }
+
+    if (-not (Test-Path $GptSetupScript)) {
+        throw "找不到 setup_gptsovits.ps1，無法自動安裝 GPT-SoVITS。"
+    }
+
+    Write-Host "         Preparing GPT-SoVITS local engine (first run downloads large files)..." -ForegroundColor Yellow
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File $GptSetupScript
+    if ($LASTEXITCODE -ne 0) { throw "GPT-SoVITS 自動安裝失敗" }
+}
 function Write-TtsSettingsForIndexTTS2 {
     $settings = @{}
     if (Test-Path $TtsSettingsFile) {
@@ -181,10 +204,11 @@ print('DONE')
 # Step 4: Start backend
 Write-Host "  [4/5] Ensuring optional TTS engines..." -ForegroundColor Yellow
 try {
+    Ensure-GptSoVITS
     Ensure-IndexTTS2
 } catch {
-    Write-Host "  [ERROR] IndexTTS2 install failed: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "          Set TTS_SKIP_INDEXTTS2_INSTALL=1 to skip this optional engine temporarily." -ForegroundColor Yellow
+    Write-Host "  [ERROR] Optional TTS engine install failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "          Set TTS_SKIP_GPTSOVITS_INSTALL=1 or TTS_SKIP_INDEXTTS2_INSTALL=1 to skip one engine temporarily." -ForegroundColor Yellow
     Read-Host "Press Enter to exit"; exit 1
 }
 
