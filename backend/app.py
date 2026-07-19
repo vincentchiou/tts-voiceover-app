@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 import config
@@ -37,12 +37,31 @@ config.ensure_dirs()
 
 app = FastAPI(title="文生語音 APP", version="1.0.0")
 
+
+@app.middleware("http")
+async def add_no_cache_for_ui(request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
 MAX_TEXT_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 50 * 1024 * 1024
 ALLOWED_AUDIO_SUFFIXES = (".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".webm", ".mp4")
 logger = logging.getLogger(__name__)
+CLIENT_LOG_FILE = config.RUNTIME_DIR / "client_events.log"
+CLONE_LOG_FILE = config.RUNTIME_DIR / "voice_clone.log"
 
+
+
+def _append_jsonl(path: Path, payload: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        logger.exception("failed to write log file: %s", path)
 
 def _uploaded_path(path: str, allowed_suffixes: tuple[str, ...]) -> Path:
     """Resolve a client-returned upload path and keep it inside UPLOADS_DIR."""
@@ -334,6 +353,22 @@ async def repair_cosyvoice():
 
 # ── 音色管理 ──────────────────────────────────────────────
 
+
+class ClientLogEvent(BaseModel):
+    event: str = Field(default="client_event")
+    message: str = ""
+    detail: dict = Field(default_factory=dict)
+
+
+@app.post("/client-log")
+async def client_log(event: ClientLogEvent):
+    _append_jsonl(CLIENT_LOG_FILE, {
+        "event": event.event,
+        "message": event.message,
+        "detail": event.detail,
+    })
+    return {"status": "ok"}
+
 @app.get("/voices")
 async def list_voices():
     """列出預設音色 + 已複製音色"""
@@ -376,6 +411,15 @@ async def clone_voice(
     if not slug:
         slug = "voice"
     voice_id = f"cloned_{slug}_{uuid.uuid4().hex[:8]}"
+    _append_jsonl(CLONE_LOG_FILE, {
+        "event": "clone_request",
+        "voice_id": voice_id,
+        "voice_name": voice_name,
+        "filename": file.filename,
+        "suffix": suffix,
+        "content_type": file.content_type,
+    })
+
     # 儲存上傳的音檔
     upload_path = config.UPLOADS_DIR / f"{voice_id}_ref{suffix}"
     await _save_upload_limited(file, upload_path, MAX_AUDIO_UPLOAD_BYTES)
@@ -383,8 +427,15 @@ async def clone_voice(
     import audio as audio_mod
     try:
         meta = audio_mod.clone_voice(upload_path, voice_id, reference_text, label=voice_name)
+        _append_jsonl(CLONE_LOG_FILE, {"event": "clone_success", "voice_id": voice_id, "label": voice_name})
     except Exception as e:
         logger.exception("clone voice failed: voice_id=%s filename=%s", voice_id, file.filename)
+        _append_jsonl(CLONE_LOG_FILE, {
+            "event": "clone_error",
+            "voice_id": voice_id,
+            "filename": file.filename,
+            "error": str(e),
+        })
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         upload_path.unlink(missing_ok=True)

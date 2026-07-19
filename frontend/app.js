@@ -3,10 +3,48 @@
    純原生 JS，無框架依賴
    ======================================== */
 
-const API = "http://localhost:8765";
+const API = "";
 const MAX_TEXT_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_AUDIO_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+function logClientEvent(event, message = "", detail = {}) {
+  const payload = JSON.stringify({
+    event,
+    message,
+    detail: {
+      ...detail,
+      href: window.location.href,
+      origin: window.location.origin,
+      userAgent: navigator.userAgent,
+      ts: new Date().toISOString(),
+    },
+  });
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      if (navigator.sendBeacon("/client-log", blob)) return;
+    }
+  } catch (_) {}
+  fetch("/client-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+window.addEventListener("error", (event) => {
+  logClientEvent("window_error", event.message || "", {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  logClientEvent("unhandled_rejection", String(event.reason || ""));
+});
 
 // ── 全域狀態 ──────────────────────────────────────────────
 const state = {
@@ -145,11 +183,19 @@ function initVoiceUploads() {
     }
   });
 
-  document.getElementById("doCloneVoice").addEventListener("click", async () => {
+  document.getElementById("doCloneVoice").addEventListener("click", async (event) => {
+    event.preventDefault();
     const file = cloneFile.files[0];
     const label = document.getElementById("voiceCloneLabel").value.trim() || "自訂音色";
     const refText = document.getElementById("voiceCloneRefText").value.trim();
     if (!file) return showToast("請先選擇音檔", "error");
+    logClientEvent("clone_click", "voice clone button clicked", {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      label,
+      hasReferenceText: Boolean(refText),
+    });
     if (file.size > MAX_AUDIO_UPLOAD_BYTES) return showToast("參考音檔需小於 50MB", "error");
 
     const btn = document.getElementById("doCloneVoice");
@@ -161,16 +207,27 @@ function initVoiceUploads() {
     form.append("reference_text", refText);
 
     try {
-      const res = await fetch(`${API}/voices/clone`, { method: "POST", body: form });
+      const uploadUrl = `${API}/voices/clone`;
+      logClientEvent("clone_fetch_start", "starting voice clone fetch", { uploadUrl });
+      const res = await fetch(uploadUrl, { method: "POST", body: form });
       const raw = await res.text();
       let data = {};
       try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw }; }
-      if (!res.ok) throw new Error(data.detail || `上傳失敗（HTTP ${res.status}）`);
+      if (!res.ok) {
+        logClientEvent("clone_http_error", "voice clone HTTP error", { status: res.status, body: raw });
+        throw new Error(data.detail || `上傳失敗（HTTP ${res.status}）`);
+      }
+      logClientEvent("clone_success", "voice clone succeeded", { voiceId: data.voice_id, label });
       showToast(`✓ 音色「${label}」已建立！`, "success");
       state.customVoiceA = data.voice_id;
       cloneForm.classList.add("hidden");
       loadVoices();
     } catch (e) {
+      logClientEvent("clone_fetch_error", e.message || String(e), {
+        name: e.name,
+        stack: e.stack,
+        api: API,
+      });
       showToast("音色複製失敗：" + e.message, "error");
     } finally {
       btn.disabled = false; btn.textContent = "上傳並建立音色";
