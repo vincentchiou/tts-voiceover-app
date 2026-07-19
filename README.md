@@ -83,7 +83,7 @@ $env:TTS_SKIP_INDEXTTS2_INSTALL = "1"   # 可選：略過 IndexTTS2
 
 | Provider | 類型 | 適合用途 | 備註 |
 |----------|------|----------|------|
-| GPT-SoVITS v4 | 本地 | 穩定、已整合、預設 fallback | 需先執行 `setup_gptsovits.ps1` |
+| GPT-SoVITS v4 | 本地 | 穩定、已整合、預設 fallback | 首次 `start.bat` 會自動執行 `setup_gptsovits.ps1` |
 | IndexTTS2 | 本地 | 中文情緒、角色語氣、自然口播 | 首次 `start.bat` 會自動安裝獨立 venv 並下載 checkpoints |
 | Qwen / CosyVoice | 雲端 | 高品質中文、多方言、指令式情緒控制 | 需 DashScope/Qwen API Key；`start.bat` 會安裝 dashscope |
 
@@ -145,7 +145,8 @@ manifests/preset_voices/
 ├── models/                  # Faster-Whisper 模型
 ├── jobs/                    # 工作產出
 ├── uploads/                 # 使用者上傳檔
-└── voices/                  # 複製音色
+├── voices/                  # 複製音色
+└── runtime/*.log            # 啟動 / GPT-SoVITS / 前端診斷 log
 ```
 
 ---
@@ -162,6 +163,7 @@ manifests/preset_voices/
 | POST   | `/settings/llm/test` | 測試 LLM 連線 |
 | GET    | `/voices` | 列出所有可用音色 |
 | POST   | `/voices/clone` | 上傳參考音檔，建立複製音色 |
+| POST   | `/client-log` | 前端診斷事件 log（本機排查用） |
 | POST   | `/jobs` | 建立配音工作 |
 | GET    | `/jobs/{id}` | 查詢工作狀態 |
 | GET    | `/jobs/{id}/events` | SSE 進度串流 |
@@ -215,6 +217,40 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
 
 ---
 
+## 目前進度與排查記憶
+
+截至 v1.2.6（2026-07-19）：
+
+- 三種 TTS provider 已整合：GPT-SoVITS v4、IndexTTS2、Qwen/CosyVoice。
+- `start.bat` 首次啟動會準備主後端、GPT-SoVITS、IndexTTS2；Qwen/CosyVoice 只需額外填 API Key。
+- 本機已驗證 GPT-SoVITS、IndexTTS2、主後端 smoke test 可啟動。
+- 聲音複製問題目前定位：後端 `/voices/clone` 用程式直打可成功；使用者在 Chrome UI 上傳 `chiounew.wav` 時，前端 log 顯示 request 在進入 FastAPI 前就 `Failed to fetch`。
+- v1.2.5 已把聲音複製上傳從 `fetch(FormData)` 改為 `File.arrayBuffer()` + `XMLHttpRequest(FormData)`，並保留更細 log。
+- v1.2.6 已將 Google Gemini 預設模型升級為 gemini-3.5-flash，並修正 google_model 空白時覆蓋預設造成 /models/:generateContent 404 的問題。
+- Google API 目前已驗證：API Key 存在、模型可列出；gemini-3.5-flash、gemini-3.1-flash-lite、gemini-3-flash-preview、gemini-flash-latest 可生成，gemini-pro-latest 會回 quota/billing 429。
+- LMStudio 已驗證：/v1/models 與短測試可回應；若正式生成仍慢或失敗，優先檢查模型是否只輸出推理內容、是否需要更長生成時間。
+
+聲音複製排查 log：
+
+```text
+%LOCALAPPDATA%\TTS配音APP\runtime\client_events.log
+%LOCALAPPDATA%\TTS配音APP\runtime\voice_clone.log
+```
+
+若 UI 仍顯示「音色複製失敗：Failed to fetch」，先查看 `client_events.log` 末尾：
+
+- `clone_click`：按鈕有觸發，會記錄檔名、大小、MIME type。
+- `clone_file_read_success` / `clone_file_read_error`：瀏覽器是否讀得到本機音檔。
+- `clone_xhr_start`：已改用 XHR 開始上傳。
+- `clone_upload_error`：XHR 層中斷、timeout 或網路錯誤。
+
+再查看 `voice_clone.log`：
+
+- 有 `clone_request` 代表後端已收到，後續看 FFmpeg 或格式錯誤。
+- 沒有 `clone_request` 代表瀏覽器/本機連線在進 FastAPI 前中斷。
+
+---
+
 ## ⚠️ 套件版本相容性注意
 
 主後端與 GPT-SoVITS 各自 venv 隔離，互不干擾。已驗證組合：
@@ -231,8 +267,8 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
 
 | 套件          | 版本         | 備註                              |
 |---------------|--------------|-----------------------------------|
-| torch         | 2.5.1+cu121  | NVIDIA：搭配 CUDA 12.1 wheel       |
-| torchaudio    | 2.5.1+cu121  | 必須與 torch 同版本                 |
+| torch         | 2.8.0+cu128 / 2.5.1+cu121 | RTX 50 系列使用 cu128；其他 NVIDIA fallback cu121 |
+| torchaudio    | 與 torch 同版本 | RTX 50 系列使用 2.8.0+cu128 |
 | 其餘 GPT-SoVITS 依賴 | 由其 `requirements.txt` 決定 | setup 腳本會自動安裝              |
 
 升級任何一個元件前，請先確認其餘元件仍能搭配。
@@ -241,6 +277,22 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
 
 ## 變更紀錄
 
+- **v1.2.6（2026-07-19）**：
+  - **Gemini 預設模型升級**：Google AI 預設由 gemini-2.5-flash 升級為 gemini-3.5-flash，前端預設同步更新
+  - **LLM 設定防呆**：google_model 等模型欄位若被舊設定或 UI 存成空字串，會自動回復預設，避免空 model 造成 Google 404
+  - **Google API 排查記憶**：本機 key 可列模型；Flash 系列可生成，gemini-pro-latest 目前會回 quota/billing 429
+- **v1.2.5（2026-07-19）**：
+  - **聲音複製上傳改用 XHR**：前端先 `File.arrayBuffer()` 讀取本機音檔，再用 `XMLHttpRequest` 上傳 FormData，避開 Chrome 本機 File multipart fetch 中斷
+  - **更細前端 log**：新增 `clone_file_read_*`、`clone_xhr_start`、`clone_upload_error`，方便定位 Failed to fetch 發生層級
+- **v1.2.4（2026-07-19）**：
+  - **聲音複製診斷 log**：新增 `/client-log`、`client_events.log`、`voice_clone.log`
+  - **前端上傳保護**：API 改相對路徑，按鈕加 `type="button"` 與 `preventDefault()`，並提高靜態檔 cache-busting 版本
+- **v1.2.3（2026-07-19）**：
+  - **音檔格式支援擴充**：聲音複製支援 WAV / MP3 / M4A / AAC / OGG / FLAC / WEBM / MP4 與 `audio/*`
+  - **錯誤透明化**：前端顯示後端 detail 或 HTTP status，後端記錄 clone failure
+- **v1.2.2（2026-07-19）**：
+  - **複製音色修正**：`/voices/clone` 改用安全唯一 voice_id，保留使用者輸入 label，避免中文名稱或重名覆蓋
+  - **測試覆蓋**：新增中文音色名稱回歸測試
 - **v1.1.1（2026-07-19）**：
   - **安全強化**：`/extract-pdf` 僅允許讀取上傳目錄內的 PDF，避免任意路徑讀取
   - **上傳防護**：PDF / SRT / TXT / 參考音檔改為分段寫入並加入大小上限，前端同步提示

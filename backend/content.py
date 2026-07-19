@@ -37,26 +37,34 @@ _DEFAULT_SETTINGS = {
     "anthropic_api_key":   "",
     "anthropic_model":     "claude-haiku-4-5-20251001",
     "google_api_key":      "",
-    "google_model":        "gemini-2.5-flash",
+    "google_model":        "gemini-3.5-flash",
 }
+
+
+def _normalize_llm_settings(settings: dict) -> dict:
+    normalized = {**_DEFAULT_SETTINGS, **settings}
+    for key in ('ollama_model', 'openai_model', 'anthropic_model', 'google_model'):
+        if not str(normalized.get(key, '')).strip():
+            normalized[key] = _DEFAULT_SETTINGS[key]
+    return normalized
 
 
 def load_llm_settings() -> dict:
     f = config.LLM_SETTINGS_FILE
     if f.exists():
         try:
-            saved = json.loads(f.read_text(encoding="utf-8"))
-            return {**_DEFAULT_SETTINGS, **saved}
+            saved = json.loads(f.read_text(encoding='utf-8'))
+            return _normalize_llm_settings(saved)
         except Exception:
             pass
     return dict(_DEFAULT_SETTINGS)
 
 
 def save_llm_settings(data: dict) -> dict:
-    merged = {**_DEFAULT_SETTINGS, **data}
+    merged = _normalize_llm_settings(data)
     config.LLM_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     config.LLM_SETTINGS_FILE.write_text(
-        json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(merged, ensure_ascii=False, indent=2), encoding='utf-8'
     )
     return merged
 
@@ -502,14 +510,27 @@ def _call_openai_compat(
     try:
         resp = httpx.post(
             f"{base_url}/v1/chat/completions",
-            headers=headers, json=body, timeout=300.0,
+            headers=headers, json=body, timeout=600.0,
         )
     except Exception as e:
         raise RuntimeError(f"OpenAI 相容 API 連線失敗：{e}")
     if resp.status_code != 200:
         raise RuntimeError(f"OpenAI 相容 API 回傳 HTTP {resp.status_code}：{resp.text[:300]}")
     try:
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        data = resp.json()
+        choice = data['choices'][0]
+        message = choice.get('message') or {}
+        content = message.get('content', '')
+        if isinstance(content, list):
+            content = ''.join(part.get('text', '') if isinstance(part, dict) else str(part) for part in content)
+        text = str(content or '').strip()
+        if text:
+            return text
+        reasoning = str(message.get('reasoning_content') or '').strip()
+        finish_reason = choice.get('finish_reason', '')
+        if reasoning:
+            raise RuntimeError('LMStudio returned reasoning_content but no final message content. finish_reason=%s; model=%s' % (finish_reason, model or '(default)'))
+        raise RuntimeError('OpenAI compatible API returned empty message content. finish_reason=%s; model=%s' % (finish_reason, model or '(default)'))
     except Exception as e:
         raise RuntimeError(f"OpenAI 相容 API 回應格式異常：{e}")
 
@@ -555,12 +576,12 @@ def _call_google(
     settings: dict, system: str, user: str, num_tokens: int,
     temperature: float = 0.8,
 ) -> str:
-    """Google AI Studio Gemini API（免費額度：gemini-2.0-flash 等）"""
+    """Google AI Studio Gemini API（免費額度：gemini-3.5-flash 等）"""
     import httpx
     api_key = settings.get("google_api_key", "")
     if not api_key:
         return ""
-    model = settings.get("google_model", "gemini-2.5-flash")
+    model = settings.get("google_model", "gemini-3.5-flash")
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"
@@ -616,7 +637,7 @@ def from_pdf_via_gemini(
             "請到 LLM 設定 → 雲端 Google AI → 填入 API Key。"
         )
 
-    model = settings.get("google_model", "gemini-2.5-flash")
+    model = settings.get("google_model", "gemini-3.5-flash")
     pdf_bytes = Path(pdf_path).read_bytes()
     pdf_size_mb = len(pdf_bytes) / 1024 / 1024
     if pdf_size_mb > 20:
