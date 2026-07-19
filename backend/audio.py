@@ -268,29 +268,43 @@ def _synthesize_gptsovits(job, job_dir: Path, progress_cb: Callable) -> Path:
 
 
 # ── 複製音色 ────────────────────────────────────────────
-def clone_voice(audio_path: Path, voice_id: str, reference_text: str = "") -> dict:
+def clone_voice(audio_path: Path, voice_id: str, reference_text: str = "", label: str = "") -> dict:
     """
     建立使用者複製音色
     audio_path: 上傳的參考音檔
     voice_id: 識別 ID
     reference_text: 參考音檔的逐字稿（GPT-SoVITS 必填，空白時用通用句帶過）
+    label: 使用者在介面輸入的顯示名稱
     """
     voice_dir = config.VOICES_DIR / voice_id
     voice_dir.mkdir(parents=True, exist_ok=True)
 
     # GPT-SoVITS 推薦 16kHz mono；v4 推論時內部會自動處理
     ref_wav = voice_dir / "reference.wav"
-    ffmpeg = str(config.ffmpeg_exe())
-    subprocess.run([
-        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+    ffmpeg_path = config.ffmpeg_exe()
+    if not ffmpeg_path.exists():
+        raise RuntimeError(f"找不到 FFmpeg：{ffmpeg_path}。請重新執行 start.bat 完成環境安裝。")
+
+    cmd = [
+        str(ffmpeg_path), "-y", "-hide_banner", "-loglevel", "error",
         "-i", str(audio_path),
         "-ar", "16000", "-ac", "1",
         str(ref_wav),
-    ], check=True)
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or e.stdout or "").strip()
+        if not err:
+            err = "FFmpeg 無法讀取這個音檔，請換成 5 到 10 秒、單人清楚說話的 WAV / MP3 / M4A。"
+        raise RuntimeError(f"參考音檔轉換失敗：{err}") from e
+
+    if not ref_wav.exists() or ref_wav.stat().st_size == 0:
+        raise RuntimeError("參考音檔轉換失敗：沒有產生有效的 reference.wav。")
 
     meta = {
         "id": voice_id,
-        "label": voice_id,
+        "label": label or voice_id,
         "reference_text": reference_text or "這是一段示範語音。",
         "prompt_lang": "zh",
         "is_cloned": True,
@@ -299,7 +313,6 @@ def clone_voice(audio_path: Path, voice_id: str, reference_text: str = "") -> di
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return meta
-
 
 
 

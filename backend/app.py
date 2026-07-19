@@ -366,18 +366,21 @@ async def clone_voice(
     if suffix not in (".wav", ".mp3", ".m4a"):
         raise HTTPException(status_code=400, detail="僅支援 WAV / MP3 / M4A 音檔")
 
-    # 安全化 voice_id
-    voice_id = "cloned_" + "".join(
-        c for c in voice_name if c.isalnum() or c in ("-", "_")
-    )[:20] or f"cloned_{uuid.uuid4().hex[:8]}"
-
+    # 安全化 voice_id：使用 ASCII slug + 短 uuid，避免中文路徑/重名覆蓋問題。
+    slug = "".join(
+        c.lower() for c in voice_name.strip()
+        if c.isascii() and (c.isalnum() or c in ("-", "_"))
+    )[:20].strip("-_")
+    if not slug:
+        slug = "voice"
+    voice_id = f"cloned_{slug}_{uuid.uuid4().hex[:8]}"
     # 儲存上傳的音檔
     upload_path = config.UPLOADS_DIR / f"{voice_id}_ref{suffix}"
     await _save_upload_limited(file, upload_path, MAX_AUDIO_UPLOAD_BYTES)
 
     import audio as audio_mod
     try:
-        meta = audio_mod.clone_voice(upload_path, voice_id, reference_text)
+        meta = audio_mod.clone_voice(upload_path, voice_id, reference_text, label=voice_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

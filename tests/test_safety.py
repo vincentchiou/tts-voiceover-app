@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import sys
 import tempfile
 import unittest
@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
@@ -67,6 +68,43 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(cm.exception.status_code, 413)
             self.assertFalse(dest.exists())
 
+
+    def test_clone_voice_uses_safe_unique_id_and_preserves_label(self):
+        with tempfile.TemporaryDirectory() as td:
+            uploads = Path(td) / "uploads"
+            voices = Path(td) / "voices"
+            captured = {}
+
+            def fake_clone_voice(audio_path, voice_id, reference_text="", label=""):
+                captured["audio_path"] = audio_path
+                captured["voice_id"] = voice_id
+                captured["reference_text"] = reference_text
+                captured["label"] = label
+                return {
+                    "id": voice_id,
+                    "label": label,
+                    "reference_text": reference_text,
+                    "prompt_lang": "zh",
+                    "is_cloned": True,
+                }
+
+            with patch.object(config, "UPLOADS_DIR", uploads), \
+                 patch.object(config, "VOICES_DIR", voices), \
+                 patch.object(audio, "clone_voice", side_effect=fake_clone_voice):
+                client = TestClient(app.app)
+                response = client.post(
+                    "/voices/clone",
+                    data={"voice_name": "測試音色", "reference_text": "這是一段測試語音。"},
+                    files={"file": ("voice.wav", b"RIFF....WAVE", "audio/wav")},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertRegex(data["voice_id"], r"^cloned_voice_[0-9a-f]{8}$")
+            self.assertEqual(captured["voice_id"], data["voice_id"])
+            self.assertEqual(captured["label"], "測試音色")
+            self.assertEqual(captured["reference_text"], "這是一段測試語音。")
+            self.assertFalse(captured["audio_path"].exists())
     def test_parse_segments_discards_empty_short_video_lines(self):
         segments = jobs._parse_segments("[00:00] 開場\n\n[00:05]   ", "short_video")
 
