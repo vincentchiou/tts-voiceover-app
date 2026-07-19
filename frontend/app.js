@@ -162,8 +162,10 @@ function initVoiceUploads() {
 
     try {
       const res = await fetch(`${API}/voices/clone`, { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "上傳失敗");
+      const raw = await res.text();
+      let data = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw }; }
+      if (!res.ok) throw new Error(data.detail || `上傳失敗（HTTP ${res.status}）`);
       showToast(`✓ 音色「${label}」已建立！`, "success");
       state.customVoiceA = data.voice_id;
       cloneForm.classList.add("hidden");

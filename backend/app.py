@@ -40,6 +40,8 @@ app = FastAPI(title="文生語音 APP", version="1.0.0")
 MAX_TEXT_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 50 * 1024 * 1024
+ALLOWED_AUDIO_SUFFIXES = (".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".webm", ".mp4")
+logger = logging.getLogger(__name__)
 
 
 def _uploaded_path(path: str, allowed_suffixes: tuple[str, ...]) -> Path:
@@ -363,8 +365,8 @@ async def clone_voice(
 ):
     """上傳參考音檔，建立複製音色"""
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in (".wav", ".mp3", ".m4a"):
-        raise HTTPException(status_code=400, detail="僅支援 WAV / MP3 / M4A 音檔")
+    if suffix not in ALLOWED_AUDIO_SUFFIXES:
+        raise HTTPException(status_code=400, detail="僅支援 WAV / MP3 / M4A / AAC / OGG / FLAC / WEBM / MP4 音檔")
 
     # 安全化 voice_id：使用 ASCII slug + 短 uuid，避免中文路徑/重名覆蓋問題。
     slug = "".join(
@@ -382,6 +384,7 @@ async def clone_voice(
     try:
         meta = audio_mod.clone_voice(upload_path, voice_id, reference_text, label=voice_name)
     except Exception as e:
+        logger.exception("clone voice failed: voice_id=%s filename=%s", voice_id, file.filename)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         upload_path.unlink(missing_ok=True)
