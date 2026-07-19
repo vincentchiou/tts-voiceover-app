@@ -26,6 +26,14 @@ import config
 
 # ── LLM 設定讀寫 ──────────────────────────────────────────
 
+_DEFAULT_GOOGLE_MODEL = "gemini-flash-latest"
+_LEGACY_GOOGLE_MODELS = {
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+}
 _DEFAULT_SETTINGS = {
     "provider":            "ollama",
     "ollama_model":        "qwen3:8b",
@@ -37,7 +45,7 @@ _DEFAULT_SETTINGS = {
     "anthropic_api_key":   "",
     "anthropic_model":     "claude-haiku-4-5-20251001",
     "google_api_key":      "",
-    "google_model":        "gemini-3.5-flash",
+    "google_model":        _DEFAULT_GOOGLE_MODEL,
 }
 
 
@@ -46,6 +54,8 @@ def _normalize_llm_settings(settings: dict) -> dict:
     for key in ('ollama_model', 'openai_model', 'anthropic_model', 'google_model'):
         if not str(normalized.get(key, '')).strip():
             normalized[key] = _DEFAULT_SETTINGS[key]
+    if normalized.get("google_model") in _LEGACY_GOOGLE_MODELS:
+        normalized["google_model"] = _DEFAULT_GOOGLE_MODEL
     return normalized
 
 
@@ -531,6 +541,8 @@ def _call_openai_compat(
         if reasoning:
             raise RuntimeError('LMStudio returned reasoning_content but no final message content. finish_reason=%s; model=%s' % (finish_reason, model or '(default)'))
         raise RuntimeError('OpenAI compatible API returned empty message content. finish_reason=%s; model=%s' % (finish_reason, model or '(default)'))
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"OpenAI 相容 API 回應格式異常：{e}")
 
@@ -576,12 +588,12 @@ def _call_google(
     settings: dict, system: str, user: str, num_tokens: int,
     temperature: float = 0.8,
 ) -> str:
-    """Google AI Studio Gemini API（免費額度：gemini-3.5-flash 等）"""
+    """Google AI Studio Gemini API（預設使用 gemini-flash-latest）"""
     import httpx
     api_key = settings.get("google_api_key", "")
     if not api_key:
         return ""
-    model = settings.get("google_model", "gemini-3.5-flash")
+    model = settings.get("google_model", _DEFAULT_GOOGLE_MODEL)
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"
@@ -608,8 +620,16 @@ def _call_google(
     data = resp.json()
     candidates = data.get("candidates", [])
     if candidates:
-        parts = candidates[0].get("content", {}).get("parts", [])
-        return "".join(p.get("text", "") for p in parts).strip()
+        first = candidates[0]
+        parts = first.get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+        if text:
+            return text
+        finish_reason = first.get("finishReason", "")
+        raise RuntimeError(
+            f"Google AI returned empty content. finishReason={finish_reason}; "
+            f"model={model}; increase maxOutputTokens or choose a less reasoning-heavy model."
+        )
     raise RuntimeError(f"Google AI 沒有回傳候選內容：{resp.text[:300]}")
 
 
@@ -637,7 +657,7 @@ def from_pdf_via_gemini(
             "請到 LLM 設定 → 雲端 Google AI → 填入 API Key。"
         )
 
-    model = settings.get("google_model", "gemini-3.5-flash")
+    model = settings.get("google_model", _DEFAULT_GOOGLE_MODEL)
     pdf_bytes = Path(pdf_path).read_bytes()
     pdf_size_mb = len(pdf_bytes) / 1024 / 1024
     if pdf_size_mb > 20:

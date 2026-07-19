@@ -409,11 +409,11 @@
         </p>
         <label>模型</label>
         <select id="googleModel">
-          <option value="gemini-2.5-flash">Gemini 2.5 Flash（推薦，平衡速度與品質）</option>
-          <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite（免費額度最大，每天 1000 次）</option>
-          <option value="gemini-2.5-pro">Gemini 2.5 Pro（最強，免費額度很少：每天 25 次）</option>
-          <option value="gemini-2.0-flash">Gemini 2.0 Flash（舊版穩定）</option>
-          <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite（舊版省用量）</option>
+          <option value="gemini-flash-latest">Gemini Flash Latest（推薦，自動使用最新 Flash）</option>
+          <option value="gemini-3.5-flash">Gemini 3.5 Flash（新版高品質）</option>
+          <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite（新版省用量）</option>
+          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview（新版預覽）</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash（舊版 fallback）</option>
         </select>
       </div>
 
@@ -501,6 +501,6 @@
 <!-- 彩帶 -->
 <div class="confetti-wrap hidden" id="confettiWrap"></div>
 
-<script src="/static/app.js?v=20260719v128"></script>
+<script src="/static/app.js?v=20260719v129"></script>
 </body>
 </html>

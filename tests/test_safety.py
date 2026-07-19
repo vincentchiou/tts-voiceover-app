@@ -16,6 +16,7 @@ if str(BACKEND) not in sys.path:
 import app
 import audio
 import config
+import content
 import jobs
 
 
@@ -105,6 +106,18 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(captured["label"], "測試音色")
             self.assertEqual(captured["reference_text"], "這是一段測試語音。")
             self.assertFalse(captured["audio_path"].exists())
+
+    def test_llm_settings_upgrades_legacy_google_model(self):
+        self.assertEqual(
+            content._normalize_llm_settings({"google_model": "gemini-2.5-flash"})["google_model"],
+            "gemini-flash-latest",
+        )
+        self.assertEqual(
+            content._normalize_llm_settings({"google_model": ""})["google_model"],
+            "gemini-flash-latest",
+        )
+
+
     def test_parse_segments_discards_empty_short_video_lines(self):
         segments = jobs._parse_segments("[00:00] 開場\n\n[00:05]   ", "short_video")
 

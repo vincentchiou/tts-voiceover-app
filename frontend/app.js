@@ -1110,7 +1110,7 @@ async function loadLlmSettings() {
     if (p === "lmstudio") loadLmstudioModels();
     _setVal("openaiModel",     data.openai_model      || "gpt-4o-mini");
     _setVal("anthropicModel",  data.anthropic_model   || "claude-haiku-4-5-20251001");
-    _setVal("googleModel",     data.google_model      || "gemini-3.5-flash");
+    _setVal("googleModel",     data.google_model      || "gemini-flash-latest");
     // API Key 顯示佔位（後端遮蔽實際 key）
     if (data.openai_api_key)    _setVal("openaiApiKey",    "••••••••");
     if (data.anthropic_api_key) _setVal("anthropicApiKey", "••••••••");

@@ -219,15 +219,15 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
 
 ## 目前進度與排查記憶
 
-截至 v1.2.6（2026-07-19）：
+截至 v1.2.7（2026-07-19）：
 
 - 三種 TTS provider 已整合：GPT-SoVITS v4、IndexTTS2、Qwen/CosyVoice。
 - `start.bat` 首次啟動會準備主後端、GPT-SoVITS、IndexTTS2；Qwen/CosyVoice 只需額外填 API Key。
 - 本機已驗證 GPT-SoVITS、IndexTTS2、主後端 smoke test 可啟動。
 - 聲音複製問題目前定位：後端 `/voices/clone` 用程式直打可成功；使用者在 Chrome UI 上傳 `chiounew.wav` 時，前端 log 顯示 request 在進入 FastAPI 前就 `Failed to fetch`。
 - v1.2.5 已把聲音複製上傳從 `fetch(FormData)` 改為 `File.arrayBuffer()` + `XMLHttpRequest(FormData)`，並保留更細 log。
-- v1.2.6 已將 Google Gemini 預設模型升級為 gemini-3.5-flash，並修正 google_model 空白時覆蓋預設造成 /models/:generateContent 404 的問題。
-- Google API 目前已驗證：API Key 存在、模型可列出；gemini-3.5-flash、gemini-3.1-flash-lite、gemini-3-flash-preview、gemini-flash-latest 可生成，gemini-pro-latest 會回 quota/billing 429。
+- v1.2.7 已將 Google Gemini 預設模型升級為 `gemini-flash-latest`，並修正 `google_model` 空白或舊 `gemini-2.x/2.5` 預設值覆蓋新版預設的問題。
+- Google API 目前已驗證：API Key 存在、模型可列出；`gemini-flash-latest` 可生成且實際指向 `gemini-3.5-flash`，`gemini-3.5-flash`、`gemini-3.1-flash-lite`、`gemini-3-flash-preview` 也可生成；`gemini-pro-latest` 會回 quota/billing 429。
 - LMStudio 已驗證：/v1/models 與短測試可回應；若正式生成仍慢或失敗，優先檢查模型是否只輸出推理內容、是否需要更長生成時間。
 
 聲音複製排查 log：
@@ -277,6 +277,10 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
 
 ## 變更紀錄
 
+- **v1.2.7（2026-07-19）**：
+  - **Google 模型預設再升級**：Google AI 預設改為 `gemini-flash-latest`，目前驗證會指向 `gemini-3.5-flash`
+  - **舊模型自動升級**：`gemini-2.0/2.5` 舊預設值會自動回到 latest alias，避免 UI 或舊設定把模型降回 2.5
+  - **Google 空回應診斷**：Gemini 回空正文時會顯示 `finishReason`，可辨識 `MAX_TOKENS` 等 token 不足情境
 - **v1.2.6（2026-07-19）**：
   - **Gemini 預設模型升級**：Google AI 預設由 gemini-2.5-flash 升級為 gemini-3.5-flash，前端預設同步更新
   - **LLM 設定防呆**：google_model 等模型欄位若被舊設定或 UI 存成空字串，會自動回復預設，避免空 model 造成 Google 404
