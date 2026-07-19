@@ -34,6 +34,23 @@ function logClientEvent(event, message = "", detail = {}) {
   }).catch(() => {});
 }
 
+
+function postFormDataXhr(url, form, timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.timeout = timeoutMs;
+    xhr.onload = () => resolve({
+      ok: xhr.status >= 200 && xhr.status < 300,
+      status: xhr.status,
+      text: async () => xhr.responseText || "",
+    });
+    xhr.onerror = () => reject(new TypeError("XHR network error"));
+    xhr.ontimeout = () => reject(new TypeError("XHR upload timeout"));
+    xhr.onabort = () => reject(new TypeError("XHR upload aborted"));
+    xhr.send(form);
+  });
+}
 window.addEventListener("error", (event) => {
   logClientEvent("window_error", event.message || "", {
     filename: event.filename,
@@ -201,15 +218,41 @@ function initVoiceUploads() {
     const btn = document.getElementById("doCloneVoice");
     btn.disabled = true; btn.textContent = "上傳中...";
 
+    let uploadFile = file;
+
+    try {
+      logClientEvent("clone_file_read_start", "reading selected voice file", {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      });
+      const buffer = await file.arrayBuffer();
+      uploadFile = new File([buffer], file.name || "voice.wav", {
+        type: file.type || "audio/wav",
+        lastModified: file.lastModified,
+      });
+      logClientEvent("clone_file_read_success", "selected voice file read", {
+        fileName: uploadFile.name,
+        fileSize: uploadFile.size,
+        fileType: uploadFile.type,
+      });
+    } catch (readError) {
+      logClientEvent("clone_file_read_error", readError.message || String(readError), {
+        name: readError.name,
+        stack: readError.stack,
+      });
+      throw new Error("讀取本機音檔失敗：" + (readError.message || String(readError)));
+    }
+
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", uploadFile);
     form.append("voice_name", label);
     form.append("reference_text", refText);
 
     try {
       const uploadUrl = `${API}/voices/clone`;
-      logClientEvent("clone_fetch_start", "starting voice clone fetch", { uploadUrl });
-      const res = await fetch(uploadUrl, { method: "POST", body: form });
+      logClientEvent("clone_xhr_start", "starting voice clone XHR", { uploadUrl });
+      const res = await postFormDataXhr(uploadUrl, form);
       const raw = await res.text();
       let data = {};
       try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw }; }
@@ -223,7 +266,7 @@ function initVoiceUploads() {
       cloneForm.classList.add("hidden");
       loadVoices();
     } catch (e) {
-      logClientEvent("clone_fetch_error", e.message || String(e), {
+      logClientEvent("clone_upload_error", e.message || String(e), {
         name: e.name,
         stack: e.stack,
         api: API,
