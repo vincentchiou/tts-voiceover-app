@@ -64,11 +64,13 @@ def _resolve(cmd_list: list, uv: str, venv_python: str) -> list:
     runtime = str(config.RUNTIME_DIR)
     models  = str(config.MODELS_DIR)
     mapping = {
-        "{uv}":          uv,
-        "{python_dir}":  str(config.PYTHON_DIR),
-        "{venv_python}": venv_python,
-        "{runtime_dir}": runtime,
-        "{models_dir}":  models,
+        "{uv}":                   uv,
+        "{python_dir}":           str(config.PYTHON_DIR),
+        "{venv_python}":          venv_python,
+        "{runtime_dir}":          runtime,
+        "{models_dir}":           models,
+        "{repo_dir}":             str(config.REPO_DIR),
+        "{backend_requirements}": str(config.REPO_DIR / "backend" / "requirements.txt"),
     }
     return [mapping.get(t, t) for t in cmd_list]
 

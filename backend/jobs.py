@@ -117,6 +117,10 @@ def get_job(job_id: str) -> Optional[Job]:
         return _jobs.get(job_id)
 
 
+def _has_speakable_segments(segments: list[dict]) -> bool:
+    return any((seg.get("text") or "").strip() for seg in segments)
+
+
 def update_script(job_id: str, script_text: str) -> Optional[Job]:
     """使用者修改腳本（只能在 awaiting_review 狀態）"""
     with _jobs_lock:
@@ -128,6 +132,7 @@ def update_script(job_id: str, script_text: str) -> Optional[Job]:
         job.script_text = script_text
         job.segments = _parse_segments(script_text, job.output_mode)
         job.estimated_minutes = _estimate_minutes(script_text)
+        job.error = "" if _has_speakable_segments(job.segments) else "腳本沒有可合成的內容，請先補上要朗讀的文字。"
         job.updated_at = _now()
         # 更新磁碟上的腳本檔
         _save_script(job)
@@ -140,6 +145,13 @@ def approve_job(job_id: str) -> Optional[Job]:
         job = _jobs.get(job_id)
         if not job or job.status != STATUS_AWAITING_REVIEW:
             return None
+        job.segments = _parse_segments(job.script_text, job.output_mode)
+        if not _has_speakable_segments(job.segments):
+            job.error = "腳本沒有可合成的內容，請先補上要朗讀的文字。"
+            job.message = "腳本沒有可合成內容"
+            job.updated_at = _now()
+            return job
+        job.error = ""
         job.status = STATUS_SYNTHESIZING
         job.progress = 70
         job.message = "開始語音合成..."
@@ -302,6 +314,8 @@ def _process_job(job_id: str):
 
         # ── Step 2：解析腳本段落 ──────────────────────
         segments = _parse_segments(script_text, job.output_mode)
+        if not _has_speakable_segments(segments):
+            raise RuntimeError("沒有產生可合成的腳本內容，請調整輸入或 LLM 設定後重試。")
         estimated = _estimate_minutes(script_text)
 
         _update(

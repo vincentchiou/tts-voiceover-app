@@ -67,11 +67,11 @@ GPT-SoVITS 程式碼與權重不入 git，請執行專用安裝腳本：
 
 第一次合成時，主後端會自動拉起 GPT-SoVITS api_v2.py（port 9880）。
 
-### 第三步：準備預設音色音檔（可選）
+### 第三步：確認預設音色音檔
 
 GPT-SoVITS 是 zero-shot 引擎，每個音色需要一段 ref 音檔 + 對應逐字稿。
 
-`manifests/models.json` 已定義 6 個預設音色，對應檔案放在：
+`manifests/models.json` 已定義 6 個預設音色，repo 已附上對應參考音檔：
 
 ```
 manifests/preset_voices/
@@ -83,10 +83,7 @@ manifests/preset_voices/
 └── taiwan_female_energetic.wav
 ```
 
-**目前尚未附上**，建議方式：
-- 自己錄 6 段 5~10 秒、台灣腔的清晰語音，照上面檔名放好
-- 或在介面上傳一段做「音色複製」，建立的 cloned voice 即可使用
-- 或從 HF Common Voice / 公開語料抓台灣腔片段（每段 5~10 秒、單一說話者）
+若想替換成自己的聲音，可自行錄製 5~10 秒、台灣腔且清晰的單一說話者語音，覆蓋同名檔案；也可以在介面上傳參考音檔建立 cloned voice。
 
 若預設音色檔不存在，後端會自動 fallback 使用第一個已 clone 的音色。
 
@@ -173,6 +170,20 @@ LLM 會輪流輸出 `主持A：...` / `主持B：...`，後端解析後分別套
 
 ---
 
+## 驗證與測試
+
+本專案目前包含一組標準庫 `unittest`，用來驗證安全邊界與腳本合成前檢查：
+
+```powershell
+# 使用主應用 venv
+& "$env:LOCALAPPDATA\TTS配音APP\runtime\venv\Scripts\python.exe" -m unittest tests.test_safety -v
+
+# 快速語法檢查
+python -m py_compile backend/app.py backend/audio.py backend/config.py backend/content.py backend/gptsovits_service.py backend/jobs.py backend/pdf_handler.py backend/runtime_manager.py backend/system_probe.py backend/video_handler.py tests/test_safety.py
+```
+
+---
+
 ## 已知限制
 
 - GPT-SoVITS 為 zero-shot，**最終音色取決於 ref 音檔**；若預設 ref 音檔品質普通，產生的語音也會普通
@@ -208,6 +219,13 @@ LLM 會輪流輸出 `主持A：...` / `主持B：...`，後端解析後分別套
 
 ## 變更紀錄
 
+- **v1.1.1（2026-07-19）**：
+  - **安全強化**：`/extract-pdf` 僅允許讀取上傳目錄內的 PDF，避免任意路徑讀取
+  - **上傳防護**：PDF / SRT / TXT / 參考音檔改為分段寫入並加入大小上限，前端同步提示
+  - **合成穩定性**：空腳本、空段落、空音訊串接會提早擋下並顯示可理解錯誤
+  - **LLM 錯誤透明化**：OpenAI 相容、Anthropic、Google provider 不再吞掉 HTTP / 連線 / 回應格式錯誤
+  - **安裝一致性**：前端自動安裝流程改用 `backend/requirements.txt`，避免只安裝部分依賴
+  - **測試覆蓋**：新增 `tests/test_safety.py`，涵蓋路徑防護、上傳限制、段落解析與空合成防護
 - **v1.1.0（2026-05-20）**：
   - **LLM 防幻覺**：新增 strict mode（溫度 0.4、可做/不可做清單、關閉自動補寫），PDF 內容上限由 6000 → 30000 字
   - **PDF 智慧解析**：blocks + 雙欄偵測、頁首頁尾自動清理、Tesseract OCR fallback（掃描檔）、解析品質報告

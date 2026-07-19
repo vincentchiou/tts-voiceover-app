@@ -37,13 +37,13 @@
       "marker": ".ffmpeg-installed"
     },
     "backend-deps": {
-      "label": "主後端依賴（FastAPI / httpx）",
-      "size_mb": 50,
+      "label": "主後端依賴（requirements.txt）",
+      "size_mb": 500,
       "cmd": [
         "{uv}", "pip", "install", "--python", "{venv_python}",
-        "fastapi", "uvicorn[standard]", "httpx", "python-multipart", "soundfile"
+        "-r", "{backend_requirements}"
       ],
-      "marker": ".backend-deps-installed"
+      "marker": ".backend-deps-v2-installed"
     },
     "whisper": {
       "label": "Faster-Whisper（用於 YouTube 轉錄）",

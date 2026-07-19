@@ -4,6 +4,9 @@
    ======================================== */
 
 const API = "http://localhost:8765";
+const MAX_TEXT_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_AUDIO_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // ── 全域狀態 ──────────────────────────────────────────────
 const state = {
@@ -70,6 +73,11 @@ function initSrtSubtabs() {
   document.getElementById("srtFile").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (file.size > MAX_TEXT_UPLOAD_BYTES) {
+      showToast("字幕/文字檔需小於 5MB", "error");
+      e.target.value = "";
+      return;
+    }
     const text = await file.text();
     document.getElementById("srtText").value = text;
   });
@@ -140,6 +148,7 @@ function initVoiceUploads() {
     const label = document.getElementById("voiceCloneLabel").value.trim() || "自訂音色";
     const refText = document.getElementById("voiceCloneRefText").value.trim();
     if (!file) return showToast("請先選擇音檔", "error");
+    if (file.size > MAX_AUDIO_UPLOAD_BYTES) return showToast("參考音檔需小於 50MB", "error");
 
     const btn = document.getElementById("doCloneVoice");
     btn.disabled = true; btn.textContent = "上傳中...";
@@ -185,6 +194,11 @@ function initFileDropZone() {
 }
 
 async function handlePdfUpload(file) {
+  if (file.size > MAX_PDF_UPLOAD_BYTES) {
+    document.getElementById("pdfFileName").textContent = "";
+    showToast("PDF 需小於 20MB，請壓縮或分割後再上傳", "error");
+    return;
+  }
   document.getElementById("pdfFileName").textContent = "上傳中... " + file.name;
   // 重置狀態
   state.pdfExtractedText = "";
@@ -810,7 +824,7 @@ async function refreshLlmStatusHint() {
       hint.innerHTML = `✅ 腳本生成：使用 <b>${providerLabel}</b>`;
     } else {
       hint.className = "llm-status-hint warn";
-      hint.innerHTML = `⚠️ 未設定語言模型，將使用內建模板（內容較簡略）。
+      hint.innerHTML = `⚠️ 尚未偵測到可用語言模型；腳本生成需要先完成 LLM 設定。
         <a href="#llmSettingsCard" onclick="document.getElementById('llmSettingsBody').classList.remove('hidden');document.getElementById('llmToggleArrow').textContent='▲'">
           點此設定 LLM →
         </a>`;

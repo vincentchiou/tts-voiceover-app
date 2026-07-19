@@ -98,6 +98,9 @@ def _concat_wavs(wav_files: list[Path], output: Path):
     if not Path(ffmpeg).exists():
         raise RuntimeError("找不到 FFmpeg，請先完成環境安裝")
 
+    if not wav_files:
+        raise RuntimeError("沒有可串接的音訊段落")
+
     if len(wav_files) == 1:
         shutil.copy(wav_files[0], output)
         return
@@ -146,6 +149,10 @@ def synthesize(job, job_dir: Path, progress_cb: Callable) -> Path:
     progress_cb: (percent, message) → None
     回傳 MP3 路徑
     """
+    segments = [seg for seg in job.segments if (seg.get("text") or "").strip()]
+    if not segments:
+        raise RuntimeError("腳本沒有可合成的內容，請先補上要朗讀的文字。")
+
     progress_cb(72, "確認 GPT-SoVITS 服務狀態...")
     gptsovits_service.ensure_v4_weights()
 
@@ -183,7 +190,6 @@ def synthesize(job, job_dir: Path, progress_cb: Callable) -> Path:
     voice_a_cfg = _voice_config(job.voice_a, job.custom_voice_a)
     voice_b_cfg = _voice_config(job.voice_b, job.custom_voice_b)
 
-    segments = job.segments
     total = len(segments)
     wav_files: list[Path] = []
 

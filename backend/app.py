@@ -36,6 +36,46 @@ config.ensure_dirs()
 
 app = FastAPI(title="文生語音 APP", version="1.0.0")
 
+MAX_TEXT_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_AUDIO_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+def _uploaded_path(path: str, allowed_suffixes: tuple[str, ...]) -> Path:
+    """Resolve a client-returned upload path and keep it inside UPLOADS_DIR."""
+    try:
+        resolved = Path(path).resolve(strict=False)
+        upload_root = config.UPLOADS_DIR.resolve(strict=False)
+        resolved.relative_to(upload_root)
+    except Exception:
+        raise HTTPException(status_code=400, detail="檔案路徑不合法")
+
+    if resolved.suffix.lower() not in allowed_suffixes:
+        raise HTTPException(status_code=400, detail="檔案類型不支援")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="檔案不存在")
+    return resolved
+
+
+async def _save_upload_limited(file: UploadFile, dest: Path, max_bytes: int) -> int:
+    """Stream an upload to disk with a hard byte limit."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    total = 0
+    try:
+        with dest.open("wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(status_code=413, detail="檔案太大，請縮小後再上傳")
+                f.write(chunk)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    return total
+
 # CORS（開發用，允許本機各 port）
 app.add_middleware(
     CORSMiddleware,
@@ -262,14 +302,18 @@ async def clone_voice(
     reference_text: str = Form(""),
 ):
     """上傳參考音檔，建立複製音色"""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in (".wav", ".mp3", ".m4a"):
+        raise HTTPException(status_code=400, detail="僅支援 WAV / MP3 / M4A 音檔")
+
     # 安全化 voice_id
     voice_id = "cloned_" + "".join(
         c for c in voice_name if c.isalnum() or c in ("-", "_")
     )[:20] or f"cloned_{uuid.uuid4().hex[:8]}"
 
     # 儲存上傳的音檔
-    upload_path = config.UPLOADS_DIR / f"{voice_id}_ref{Path(file.filename).suffix}"
-    upload_path.write_bytes(await file.read())
+    upload_path = config.UPLOADS_DIR / f"{voice_id}_ref{suffix}"
+    await _save_upload_limited(file, upload_path, MAX_AUDIO_UPLOAD_BYTES)
 
     import audio as audio_mod
     try:
@@ -353,6 +397,8 @@ async def approve_job(job_id: str):
     job = jobs.approve_job(job_id)
     if not job:
         raise HTTPException(status_code=400, detail="無法核准（工作不存在或狀態不正確）")
+    if job.status == jobs.STATUS_AWAITING_REVIEW and job.error:
+        raise HTTPException(status_code=400, detail=job.error)
     return jobs.job_to_dict(job)
 
 
@@ -383,9 +429,7 @@ class ExtractPdfRequest(BaseModel):
 @app.post("/extract-pdf")
 async def extract_pdf(req: ExtractPdfRequest):
     """讀取 PDF 文字，提供前端預覽編輯。回傳品質報告。"""
-    pdf_path = Path(req.path)
-    if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="PDF 檔案不存在")
+    pdf_path = _uploaded_path(req.path, (".pdf",))
 
     loop = asyncio.get_event_loop()
     try:
@@ -404,19 +448,21 @@ async def extract_pdf(req: ExtractPdfRequest):
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """上傳 PDF 或 SRT 檔案，回傳檔案路徑供後續使用"""
-    suffix = Path(file.filename).suffix.lower()
+    suffix = Path(file.filename or "").suffix.lower()
     if suffix not in (".pdf", ".srt", ".txt"):
         raise HTTPException(status_code=400, detail="僅支援 PDF / SRT / TXT 檔案")
 
     upload_id = uuid.uuid4().hex[:12]
     save_path = config.UPLOADS_DIR / f"{upload_id}{suffix}"
-    save_path.write_bytes(await file.read())
+    max_bytes = MAX_PDF_UPLOAD_BYTES if suffix == ".pdf" else MAX_TEXT_UPLOAD_BYTES
+    await _save_upload_limited(file, save_path, max_bytes)
 
-    # 若是 SRT，直接讀取文字
-    if suffix == ".srt":
+    # 若是文字類，直接讀取文字
+    if suffix in (".srt", ".txt"):
         import video_handler
-        content = video_handler.parse_srt(save_path.read_text(encoding="utf-8", errors="replace"))
+        raw_text = save_path.read_text(encoding="utf-8", errors="replace")
+        content = video_handler.parse_srt(raw_text) if suffix == ".srt" else raw_text.strip()
         save_path.unlink(missing_ok=True)
-        return {"type": "srt", "content": content}
+        return {"type": suffix.lstrip("."), "content": content}
 
     return {"type": "pdf", "path": str(save_path), "filename": file.filename}

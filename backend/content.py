@@ -504,11 +504,14 @@ def _call_openai_compat(
             f"{base_url}/v1/chat/completions",
             headers=headers, json=body, timeout=300.0,
         )
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
-        pass
-    return ""
+    except Exception as e:
+        raise RuntimeError(f"OpenAI 相容 API 連線失敗：{e}")
+    if resp.status_code != 200:
+        raise RuntimeError(f"OpenAI 相容 API 回傳 HTTP {resp.status_code}：{resp.text[:300]}")
+    try:
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        raise RuntimeError(f"OpenAI 相容 API 回應格式異常：{e}")
 
 
 def _call_anthropic(
@@ -538,11 +541,14 @@ def _call_anthropic(
             },
             timeout=300.0,
         )
-        if resp.status_code == 200:
-            return resp.json()["content"][0]["text"].strip()
-    except Exception:
-        pass
-    return ""
+    except Exception as e:
+        raise RuntimeError(f"Anthropic 連線失敗：{e}")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Anthropic 回傳 HTTP {resp.status_code}：{resp.text[:300]}")
+    try:
+        return resp.json()["content"][0]["text"].strip()
+    except Exception as e:
+        raise RuntimeError(f"Anthropic 回應格式異常：{e}")
 
 
 def _call_google(
@@ -574,15 +580,16 @@ def _call_google(
             },
             timeout=300.0,
         )
-        if resp.status_code == 200:
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                return "".join(p.get("text", "") for p in parts).strip()
-    except Exception:
-        pass
-    return ""
+    except Exception as e:
+        raise RuntimeError(f"Google AI 連線失敗：{e}")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Google AI 回傳 HTTP {resp.status_code}：{resp.text[:300]}")
+    data = resp.json()
+    candidates = data.get("candidates", [])
+    if candidates:
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return "".join(p.get("text", "") for p in parts).strip()
+    raise RuntimeError(f"Google AI 沒有回傳候選內容：{resp.text[:300]}")
 
 
 # ── Gemini 直讀 PDF（多模態，免抽取） ───────────────────
