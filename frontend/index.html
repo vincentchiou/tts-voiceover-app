@@ -185,6 +185,22 @@
       </div>
     </div>
 
+
+    <!-- TTS 引擎選擇 -->
+    <label style="margin-top:1.2rem">🎚️ TTS 語音引擎</label>
+    <div class="tts-provider-grid">
+      <button type="button" class="tts-provider-card active" data-tts-provider="gptsovits">
+        <b>GPT-SoVITS v4</b><span>本地穩定，預設</span>
+      </button>
+      <button type="button" class="tts-provider-card" data-tts-provider="indextts2">
+        <b>IndexTTS2</b><span>本地，中文情緒強化</span>
+      </button>
+      <button type="button" class="tts-provider-card" data-tts-provider="qwen">
+        <b>Qwen / CosyVoice</b><span>雲端，高品質與指令情緒</span>
+      </button>
+    </div>
+    <div id="ttsStatusHint" class="llm-status-hint hidden"></div>
+
     <!-- 音色設定 -->
     <label style="margin-top:1.2rem">🎵 音色設定</label>
     <div class="voice-grid">
@@ -416,11 +432,75 @@
     </div>
   </div>
 
+
+  <!-- TTS 設定面板 -->
+  <div class="card" id="ttsSettingsCard">
+    <div class="section-title" style="cursor:pointer;user-select:none" onclick="toggleTtsSettings()">
+      <span class="emoji">🎚️</span> TTS 語音引擎設定
+      <span id="ttsToggleArrow" style="margin-left:auto;font-size:0.9rem">▼</span>
+    </div>
+    <div id="ttsSettingsBody" class="hidden">
+      <label>目前引擎</label>
+      <select id="ttsProviderSelect">
+        <option value="gptsovits">GPT-SoVITS v4（本地，預設）</option>
+        <option value="indextts2">IndexTTS2（本地，中文情緒強化）</option>
+        <option value="qwen">Qwen / CosyVoice（雲端，高品質）</option>
+      </select>
+
+      <div id="ttsIndextts2" class="tts-section hidden">
+        <label>IndexTTS2 Python（自動安裝後填入）</label>
+        <input type="text" id="indextts2Python" placeholder="%LOCALAPPDATA%\TTS配音APP\runtime\indextts2_venv\Scripts\python.exe" />
+        <label>IndexTTS2 checkpoints 目錄</label>
+        <input type="text" id="indextts2ModelDir" placeholder="例如：H:\models\IndexTTS-2" />
+        <label>IndexTTS2 config.yaml</label>
+        <input type="text" id="indextts2ConfigPath" placeholder="例如：H:\models\IndexTTS-2\config.yaml" />
+        <label>情緒描述</label>
+        <input type="text" id="indextts2Emotion" placeholder="自然、親切、像台灣老師在講課..." />
+        <label class="checkbox-row"><input type="checkbox" id="indextts2UseFp16" checked /> 使用 FP16（NVIDIA GPU 建議）</label>
+      </div>
+
+      <div id="ttsQwen" class="tts-section hidden">
+        <label>DashScope / Qwen API Key</label>
+        <input type="password" id="qwenApiKey" placeholder="sk-... 或留空使用 DASHSCOPE_API_KEY" autocomplete="off" />
+        <label>API Base URL</label>
+        <input type="text" id="qwenBaseHttpUrl" placeholder="https://dashscope-intl.aliyuncs.com/api/v1" />
+        <label>模型</label>
+        <select id="qwenModel">
+          <option value="qwen3-tts-instruct-flash">qwen3-tts-instruct-flash（指令情緒）</option>
+          <option value="qwen3-tts-flash">qwen3-tts-flash（快速）</option>
+          <option value="qwen-audio-3.0-tts-flash">qwen-audio-3.0-tts-flash</option>
+          <option value="qwen-audio-3.0-tts-plus">qwen-audio-3.0-tts-plus</option>
+          <option value="cosyvoice-v3-flash">cosyvoice-v3-flash</option>
+          <option value="cosyvoice-v3-plus">cosyvoice-v3-plus</option>
+        </select>
+        <div class="voice-grid">
+          <div class="voice-slot">
+            <label>雲端音色 A</label>
+            <input type="text" id="qwenVoiceA" placeholder="Cherry" />
+          </div>
+          <div class="voice-slot">
+            <label>雲端音色 B</label>
+            <input type="text" id="qwenVoiceB" placeholder="Ethan" />
+          </div>
+        </div>
+        <label>語氣 / 情緒指令</label>
+        <textarea id="qwenInstructions" style="min-height:80px" placeholder="台灣繁體中文口吻，自然、清楚、有教學親和力..."></textarea>
+        <label class="checkbox-row"><input type="checkbox" id="qwenOptimizeInstructions" checked /> 讓模型自動優化語氣指令</label>
+      </div>
+
+      <div class="gap-row mt-1">
+        <button class="btn btn-outline" id="testTtsBtn" style="flex:1">🔌 測試引擎</button>
+        <button class="btn btn-primary" id="saveTtsBtn" style="flex:2">💾 儲存 TTS 設定</button>
+      </div>
+      <p id="ttsTestResult" style="font-size:0.85rem;margin-top:0.5rem;color:var(--muted)"></p>
+    </div>
+  </div>
+
 </div><!-- /container -->
 
 <!-- 彩帶 -->
 <div class="confetti-wrap hidden" id="confettiWrap"></div>
 
-<script src="/static/app.js?v=20260512b"></script>
+<script src="/static/app.js?v=20260719tts"></script>
 </body>
 </html>

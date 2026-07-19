@@ -18,6 +18,7 @@ const state = {
   voiceB: "台灣男聲",
   customVoiceA: "",
   customVoiceB: "",
+  ttsProvider: "gptsovits",
   jobId: null,
   pollTimer: null,
   pdfUploadPath: null,       // 已上傳 PDF 的伺服器路徑
@@ -36,6 +37,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initFileDropZone();
   initPdfModeToggle();
   initLlmSettings();
+  initTtsSettings();
   loadVoices();
   loadSystemInfo();
 });
@@ -289,6 +291,7 @@ function initButtons() {
     if (!validateStep1()) return;
     goToStep(2);
     refreshLlmStatusHint();  // 進入 step2 時更新 LLM 狀態提示
+    refreshTtsStatusHint();
   });
 
   // Step 2 返回
@@ -312,6 +315,8 @@ function initButtons() {
   // 系統安裝按鈕
   document.getElementById("installBtn").addEventListener("click", startInstall);
   document.getElementById("downloadWhisperBtn").addEventListener("click", () => downloadModel("faster-whisper-medium"));
+  document.getElementById("saveTtsBtn")?.addEventListener("click", saveTtsSettings);
+  document.getElementById("testTtsBtn")?.addEventListener("click", testTtsSettings);
 }
 
 // ── 表單驗證 ─────────────────────────────────────────────
@@ -376,6 +381,8 @@ function getActualInputType() {
 async function startGenerate() {
   const content = getInputContent();
   const inputType = getActualInputType();
+
+  await saveTtsSettings({ silent: true });
 
   const body = {
     input_type: inputType,
@@ -751,6 +758,146 @@ async function downloadModel(modelId) {
       }
     } catch {}
   }, 1200);
+}
+
+
+// ── TTS 設定面板 ─────────────────────────────────────────
+
+function initTtsSettings() {
+  document.querySelectorAll(".tts-provider-card").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      state.ttsProvider = btn.dataset.ttsProvider;
+      syncTtsProviderUi(state.ttsProvider);
+      await saveTtsSettings({ silent: true });
+      refreshTtsStatusHint();
+    });
+  });
+  document.getElementById("ttsProviderSelect")?.addEventListener("change", (e) => {
+    state.ttsProvider = e.target.value;
+    syncTtsProviderUi(state.ttsProvider);
+  });
+  loadTtsSettings();
+}
+
+function toggleTtsSettings() {
+  const body = document.getElementById("ttsSettingsBody");
+  const arrow = document.getElementById("ttsToggleArrow");
+  const isHidden = body.classList.toggle("hidden");
+  arrow.textContent = isHidden ? "▼" : "▲";
+  if (!isHidden) loadTtsSettings();
+}
+
+function syncTtsProviderUi(provider) {
+  state.ttsProvider = provider || "gptsovits";
+  document.querySelectorAll(".tts-provider-card").forEach(b => {
+    b.classList.toggle("active", b.dataset.ttsProvider === state.ttsProvider);
+  });
+  _setVal("ttsProviderSelect", state.ttsProvider);
+  document.querySelectorAll(".tts-section").forEach(s => s.classList.add("hidden"));
+  document.getElementById("ttsIndextts2")?.classList.toggle("hidden", state.ttsProvider !== "indextts2");
+  document.getElementById("ttsQwen")?.classList.toggle("hidden", state.ttsProvider !== "qwen");
+}
+
+async function loadTtsSettings() {
+  try {
+    const res = await fetch(`${API}/settings/tts`);
+    if (!res.ok) return;
+    const data = await res.json();
+    syncTtsProviderUi(data.provider || "gptsovits");
+    _setVal("indextts2Python", data.indextts2_python || "");
+    _setVal("indextts2ModelDir", data.indextts2_model_dir || "");
+    _setVal("indextts2ConfigPath", data.indextts2_config_path || "");
+    _setVal("indextts2Emotion", data.indextts2_emotion || "");
+    const fp16 = document.getElementById("indextts2UseFp16");
+    if (fp16) fp16.checked = data.indextts2_use_fp16 !== false;
+    if (data.qwen_api_key) _setVal("qwenApiKey", "••••••••");
+    _setVal("qwenBaseHttpUrl", data.qwen_base_http_url || "https://dashscope-intl.aliyuncs.com/api/v1");
+    _setVal("qwenModel", data.qwen_model || "qwen3-tts-instruct-flash");
+    _setVal("qwenVoiceA", data.qwen_voice_a || "Cherry");
+    _setVal("qwenVoiceB", data.qwen_voice_b || "Ethan");
+    _setVal("qwenInstructions", data.qwen_instructions || "");
+    const opt = document.getElementById("qwenOptimizeInstructions");
+    if (opt) opt.checked = data.qwen_optimize_instructions !== false;
+    refreshTtsStatusHint();
+  } catch {}
+}
+
+async function saveTtsSettings(options = {}) {
+  const body = {
+    provider: state.ttsProvider || _getVal("ttsProviderSelect") || "gptsovits",
+    indextts2_python: _getVal("indextts2Python"),
+    indextts2_model_dir: _getVal("indextts2ModelDir"),
+    indextts2_config_path: _getVal("indextts2ConfigPath"),
+    indextts2_use_fp16: !!document.getElementById("indextts2UseFp16")?.checked,
+    indextts2_emotion: _getVal("indextts2Emotion"),
+    qwen_base_http_url: _getVal("qwenBaseHttpUrl") || "https://dashscope-intl.aliyuncs.com/api/v1",
+    qwen_model: _getVal("qwenModel") || "qwen3-tts-instruct-flash",
+    qwen_voice_a: _getVal("qwenVoiceA") || "Cherry",
+    qwen_voice_b: _getVal("qwenVoiceB") || "Ethan",
+    qwen_instructions: _getVal("qwenInstructions"),
+    qwen_optimize_instructions: !!document.getElementById("qwenOptimizeInstructions")?.checked,
+  };
+  const qKey = _getVal("qwenApiKey");
+  if (qKey && qKey !== "••••••••") body.qwen_api_key = qKey;
+  try {
+    const res = await fetch(`${API}/settings/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "儲存失敗");
+    if (!options.silent) {
+      showToast("✓ TTS 設定已儲存", "success");
+      setTtsResult("✓ 設定已儲存", "ok");
+    }
+  } catch (e) {
+    if (!options.silent) showToast("❌ TTS 設定儲存失敗：" + e.message, "error");
+  }
+}
+
+async function testTtsSettings() {
+  const btn = document.getElementById("testTtsBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "測試中..."; }
+  await saveTtsSettings({ silent: true });
+  try {
+    const res = await fetch(`${API}/settings/tts/test`, { method: "POST" });
+    const data = await res.json();
+    const ok = data.status === "ok";
+    setTtsResult((ok ? "✓ " : "✗ ") + (data.message || ""), ok ? "ok" : "error");
+    showToast((ok ? "✓ " : "❌ ") + (data.message || "TTS 測試完成"), ok ? "success" : "error");
+    refreshTtsStatusHint();
+  } catch (e) {
+    setTtsResult("✗ 無法連線後端", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🔌 測試引擎"; }
+  }
+}
+
+async function refreshTtsStatusHint() {
+  const hint = document.getElementById("ttsStatusHint");
+  if (!hint) return;
+  try {
+    const res = await fetch(`${API}/settings/tts/status`);
+    const data = await res.json();
+    const p = data.provider || state.ttsProvider || "gptsovits";
+    const labels = { gptsovits: "GPT-SoVITS v4", indextts2: "IndexTTS2", qwen: "Qwen / CosyVoice" };
+    let ok = false;
+    if (p === "gptsovits") ok = !!data.gptsovits?.ready;
+    if (p === "indextts2") ok = !!(data.indextts2?.python_ready && data.indextts2?.package_ready && data.indextts2?.model_dir_ready && data.indextts2?.config_ready);
+    if (p === "qwen") ok = !!(data.qwen?.package_ready && data.qwen?.api_key_ready);
+    hint.className = ok ? "llm-status-hint ok" : "llm-status-hint warn";
+    hint.textContent = ok ? `✅ TTS：使用 ${labels[p]}` : `⚠️ TTS：${labels[p]} 尚未完成設定，合成時會顯示修復提示`;
+    hint.classList.remove("hidden");
+  } catch {
+    hint.classList.add("hidden");
+  }
+}
+
+function setTtsResult(msg, type) {
+  const el = document.getElementById("ttsTestResult");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === "ok" ? "#22c55e" : type === "error" ? "#ef4444" : "var(--muted)";
 }
 
 // ── LLM 設定面板 ─────────────────────────────────────────

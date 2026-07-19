@@ -16,7 +16,7 @@
 - **PDF 智慧解析**：雙欄偵測、頁首頁尾清理、Tesseract OCR fallback、品質報告
 - **PDF 預覽編輯**：解析後可在前端編輯確認再生成（避免 LLM 亂講）
 - **Gemini 直讀 PDF**：可選擇讓 Gemini 直接讀 PDF（多模態），429 配額用完自動降級到本地解析 + 本地 LLM
-- **TTS 引擎**：**GPT-SoVITS v4**（48kHz 高品質中文 TTS + zero-shot 聲音複製）
+- **TTS 引擎可切換**：GPT-SoVITS v4（本地預設）/ **IndexTTS2**（本地中文情緒強化）/ **Qwen-CosyVoice**（雲端高品質與指令情緒）
 - **6 種預設音色**：台灣女聲、台灣男聲、活潑女聲、沉穩男聲、溫暖男聲、元氣女聲
 - **音色複製**：上傳一段參考音檔（5~10 秒）即可即時複製出自訂音色
 - **YouTube 轉錄**：用 Faster-Whisper 自動把影片內容轉為文字
@@ -61,11 +61,31 @@ GPT-SoVITS 程式碼與權重不入 git，請執行專用安裝腳本：
 
 第一次執行會自動：
 1. 下載 uv（Python 套件管理器）
-2. 安裝 Python 3.10 與主後端套件
-3. 啟動後端 FastAPI 服務（port 8765）
-4. 自動開啟瀏覽器到 `http://localhost:8765`
+2. 安裝 Python 3.10 與主後端套件（含 Qwen/CosyVoice 需要的 `dashscope`）
+3. 建立 IndexTTS2 獨立 venv、clone 官方 repo，並下載 `IndexTeam/IndexTTS-2` checkpoints（放在 `%LOCALAPPDATA%\TTSVoiceoverApp`，避開 Windows 中文路徑編碼問題）
+4. 將 IndexTTS2 Python / checkpoints / config 路徑寫入 TTS 設定
+5. 啟動後端 FastAPI 服務（port 8765）並自動開啟瀏覽器到 `http://localhost:8765`
 
-第一次合成時，主後端會自動拉起 GPT-SoVITS api_v2.py（port 9880）。
+IndexTTS2 首次安裝需下載大型模型，可能花較久。若暫時只想使用 GPT-SoVITS / Qwen-CosyVoice，可先設定：
+
+```powershell
+$env:TTS_SKIP_INDEXTTS2_INSTALL = "1"
+.\start.bat
+```
+
+第一次合成時，若 TTS provider 使用 GPT-SoVITS，主後端會自動拉起 GPT-SoVITS api_v2.py（port 9880）。
+
+### TTS 引擎選擇
+
+前端「輸出設定」可直接選擇三種 TTS provider：
+
+| Provider | 類型 | 適合用途 | 備註 |
+|----------|------|----------|------|
+| GPT-SoVITS v4 | 本地 | 穩定、已整合、預設 fallback | 需先執行 `setup_gptsovits.ps1` |
+| IndexTTS2 | 本地 | 中文情緒、角色語氣、自然口播 | 首次 `start.bat` 會自動安裝獨立 venv 並下載 checkpoints |
+| Qwen / CosyVoice | 雲端 | 高品質中文、多方言、指令式情緒控制 | 需 DashScope/Qwen API Key；`start.bat` 會安裝 dashscope |
+
+TTS 設定會存到 `%LOCALAPPDATA%\TTS配音APP\tts_settings.json`；IndexTTS2 的獨立 venv 與 checkpoints 預設存到 `%LOCALAPPDATA%\TTSVoiceoverApp`。API Key 不會回傳到前端，只顯示是否已設定。
 
 ### 第三步：確認預設音色音檔
 
@@ -226,6 +246,10 @@ python -m py_compile backend/app.py backend/audio.py backend/config.py backend/c
   - **LLM 錯誤透明化**：OpenAI 相容、Anthropic、Google provider 不再吞掉 HTTP / 連線 / 回應格式錯誤
   - **安裝一致性**：前端自動安裝流程改用 `backend/requirements.txt`，避免只安裝部分依賴
   - **測試覆蓋**：新增 `tests/test_safety.py`，涵蓋路徑防護、上傳限制、段落解析與空合成防護
+- **v1.2.0（2026-07-19）**：
+  - **TTS provider 可切換**：新增 GPT-SoVITS / IndexTTS2 / Qwen-CosyVoice 三種語音引擎設定
+  - **IndexTTS2 支援**：首次 `start.bat` 自動 clone 官方 repo、建立獨立 venv、下載 checkpoints，並使用情緒描述引導中文口播
+  - **Qwen-CosyVoice 支援**：透過 DashScope/Qwen Cloud API 合成，支援模型、音色與語氣指令設定
 - **v1.1.0（2026-05-20）**：
   - **LLM 防幻覺**：新增 strict mode（溫度 0.4、可做/不可做清單、關閉自動補寫），PDF 內容上限由 6000 → 30000 字
   - **PDF 智慧解析**：blocks + 雙欄偵測、頁首頁尾自動清理、Tesseract OCR fallback（掃描檔）、解析品質報告

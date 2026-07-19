@@ -74,6 +74,7 @@ PORT = int(os.environ.get("TTS_PORT", "8765"))
 
 
 LLM_SETTINGS_FILE = APP_HOME / "llm_settings.json"
+TTS_SETTINGS_FILE = APP_HOME / "tts_settings.json"
 
 def ensure_dirs():
     """確保所有必要資料夾存在"""

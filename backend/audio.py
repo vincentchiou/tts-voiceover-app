@@ -17,6 +17,7 @@ from typing import Callable, Optional
 
 import config
 import gptsovits_service
+import tts_providers
 
 logger = logging.getLogger(__name__)
 
@@ -149,54 +150,84 @@ def synthesize(job, job_dir: Path, progress_cb: Callable) -> Path:
     progress_cb: (percent, message) → None
     回傳 MP3 路徑
     """
+    _speakable_segments(job)
+    settings = tts_providers.load_tts_settings()
+    provider = settings.get("provider", "gptsovits")
+    if provider == "indextts2":
+        return _synthesize_indextts2(job, job_dir, progress_cb, settings)
+    if provider == "qwen":
+        return _synthesize_qwen(job, job_dir, progress_cb, settings)
+    return _synthesize_gptsovits(job, job_dir, progress_cb)
+
+
+def _speakable_segments(job) -> list[dict]:
     segments = [seg for seg in job.segments if (seg.get("text") or "").strip()]
     if not segments:
         raise RuntimeError("腳本沒有可合成的內容，請先補上要朗讀的文字。")
+    return segments
 
+
+def _voice_config(voice_name: str, custom_voice_id: str) -> dict:
+    """回傳該音色的合成參數：{ ref_audio_path, prompt_text, prompt_lang }"""
+    preset_voices = _load_preset_voices()
+    # 1) 使用者複製音色優先
+    if custom_voice_id:
+        cloned = _load_cloned_voice(custom_voice_id)
+        if cloned:
+            return {
+                "ref_audio_path": cloned["audio_path"],
+                "prompt_text": cloned.get("reference_text", "")
+                               or "這是一段示範語音。",
+                "prompt_lang": cloned.get("prompt_lang", "zh"),
+            }
+    # 2) 預設音色
+    cfg = preset_voices.get(voice_name, preset_voices.get("台灣女聲", {}))
+    ref_audio = _resolve_preset_ref_audio(cfg)
+    if not ref_audio:
+        raise RuntimeError(
+            f"音色「{voice_name}」缺少參考音檔。\n"
+            "請先在「音色管理」上傳一個參考音檔，或將檔案放在 "
+            f"manifests/{cfg.get('ref_audio', 'preset_voices/...')}。"
+        )
+    return {
+        "ref_audio_path": str(ref_audio),
+        "prompt_text": cfg.get("prompt_text", "這是一段示範語音。"),
+        "prompt_lang": cfg.get("prompt_lang", "zh"),
+    }
+
+
+def _prepare_segments(job, job_dir: Path, progress_cb: Callable, label: str) -> tuple[list[dict], Path, int, list[Path]]:
+    segments = _speakable_segments(job)
+    total = len(segments)
+    wav_files: list[Path] = []
+    temp_dir = job_dir / "segments"
+    temp_dir.mkdir(exist_ok=True)
+    progress_cb(75, f"{label}（共 {total} 段）...")
+    return segments, temp_dir, total, wav_files
+
+
+def _finish_audio(job_dir: Path, temp_dir: Path, wav_files: list[Path], progress_cb: Callable) -> Path:
+    progress_cb(96, "串接音訊檔案...")
+    combined_wav = job_dir / "output.wav"
+    _concat_wavs(wav_files, combined_wav)
+
+    progress_cb(98, "轉換為 MP3...")
+    mp3_path = job_dir / "output.mp3"
+    _wav_to_mp3(combined_wav, mp3_path)
+
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    combined_wav.unlink(missing_ok=True)
+    return mp3_path
+
+
+def _synthesize_gptsovits(job, job_dir: Path, progress_cb: Callable) -> Path:
     progress_cb(72, "確認 GPT-SoVITS 服務狀態...")
     gptsovits_service.ensure_v4_weights()
-
-    preset_voices = _load_preset_voices()
-
-    def _voice_config(voice_name: str, custom_voice_id: str) -> dict:
-        """
-        回傳該音色的合成參數：{ ref_audio_path, prompt_text, prompt_lang }
-        """
-        # 1) 使用者複製音色優先
-        if custom_voice_id:
-            cloned = _load_cloned_voice(custom_voice_id)
-            if cloned:
-                return {
-                    "ref_audio_path": cloned["audio_path"],
-                    "prompt_text": cloned.get("reference_text", "")
-                                   or "這是一段示範語音。",
-                    "prompt_lang": cloned.get("prompt_lang", "zh"),
-                }
-        # 2) 預設音色
-        cfg = preset_voices.get(voice_name, preset_voices.get("台灣女聲", {}))
-        ref_audio = _resolve_preset_ref_audio(cfg)
-        if not ref_audio:
-            raise RuntimeError(
-                f"音色「{voice_name}」缺少參考音檔。\n"
-                "請先在「音色管理」上傳一個參考音檔，或將檔案放在 "
-                f"manifests/{cfg.get('ref_audio', 'preset_voices/...')}。"
-            )
-        return {
-            "ref_audio_path": str(ref_audio),
-            "prompt_text": cfg.get("prompt_text", "這是一段示範語音。"),
-            "prompt_lang": cfg.get("prompt_lang", "zh"),
-        }
 
     voice_a_cfg = _voice_config(job.voice_a, job.custom_voice_a)
     voice_b_cfg = _voice_config(job.voice_b, job.custom_voice_b)
 
-    total = len(segments)
-    wav_files: list[Path] = []
-
-    temp_dir = job_dir / "segments"
-    temp_dir.mkdir(exist_ok=True)
-
-    progress_cb(75, f"合成語音中（共 {total} 段）...")
+    segments, temp_dir, total, wav_files = _prepare_segments(job, job_dir, progress_cb, "GPT-SoVITS 合成語音中")
 
     for i, seg in enumerate(segments):
         speaker = seg.get("speaker", "旁白")
@@ -233,18 +264,7 @@ def synthesize(job, job_dir: Path, progress_cb: Callable) -> Path:
         pct = 75 + int((i + 1) / total * 20)
         progress_cb(pct, f"合成中 {i+1}/{total}...")
 
-    progress_cb(96, "串接音訊檔案...")
-    combined_wav = job_dir / "output.wav"
-    _concat_wavs(wav_files, combined_wav)
-
-    progress_cb(98, "轉換為 MP3...")
-    mp3_path = job_dir / "output.mp3"
-    _wav_to_mp3(combined_wav, mp3_path)
-
-    shutil.rmtree(temp_dir, ignore_errors=True)
-    combined_wav.unlink(missing_ok=True)
-
-    return mp3_path
+    return _finish_audio(job_dir, temp_dir, wav_files, progress_cb)
 
 
 # ── 複製音色 ────────────────────────────────────────────
@@ -279,6 +299,76 @@ def clone_voice(audio_path: Path, voice_id: str, reference_text: str = "") -> di
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return meta
+
+
+
+
+def _synthesize_indextts2(job, job_dir: Path, progress_cb: Callable, settings: dict) -> Path:
+    progress_cb(72, "準備 IndexTTS2 引擎...")
+    voice_a_cfg = _voice_config(job.voice_a, job.custom_voice_a)
+    voice_b_cfg = _voice_config(job.voice_b, job.custom_voice_b)
+    segments, temp_dir, total, wav_files = _prepare_segments(job, job_dir, progress_cb, "IndexTTS2 合成語音中")
+
+    for i, seg in enumerate(segments):
+        speaker = seg.get("speaker", "旁白")
+        text = seg.get("text", "").strip()
+        cfg = voice_b_cfg if (job.output_mode == "duo" and speaker == "主持B") else voice_a_cfg
+        for ci, chunk in enumerate(_split_text(text, max_chars=120)):
+            wav_out = temp_dir / f"seg_{i:04d}_{ci:02d}.wav"
+            tts_providers.synthesize_indextts2(
+                text=chunk,
+                ref_audio_path=cfg["ref_audio_path"],
+                out_path=wav_out,
+                settings=settings,
+            )
+            wav_files.append(wav_out)
+        if job.output_mode == "duo" and i < total - 1:
+            next_speaker = segments[i + 1].get("speaker", "旁白")
+            if next_speaker != speaker:
+                silence_path = temp_dir / f"silence_{i:04d}.wav"
+                _create_silence_wav(silence_path, duration_ms=350)
+                wav_files.append(silence_path)
+        pct = 75 + int((i + 1) / total * 20)
+        progress_cb(pct, f"IndexTTS2 合成中 {i+1}/{total}...")
+
+    return _finish_audio(job_dir, temp_dir, wav_files, progress_cb)
+
+
+def _synthesize_qwen(job, job_dir: Path, progress_cb: Callable, settings: dict) -> Path:
+    progress_cb(72, "準備 Qwen/CosyVoice 雲端語音...")
+    voice_a = settings.get("qwen_voice_a", "Cherry")
+    voice_b = settings.get("qwen_voice_b", "Ethan")
+    segments, temp_dir, total, wav_files = _prepare_segments(job, job_dir, progress_cb, "Qwen/CosyVoice 合成語音中")
+
+    for i, seg in enumerate(segments):
+        speaker = seg.get("speaker", "旁白")
+        text = seg.get("text", "").strip()
+        voice = voice_b if (job.output_mode == "duo" and speaker == "主持B") else voice_a
+        for ci, chunk in enumerate(_split_text(text, max_chars=800)):
+            mp3_out = temp_dir / f"seg_{i:04d}_{ci:02d}.mp3"
+            wav_out = temp_dir / f"seg_{i:04d}_{ci:02d}.wav"
+            tts_providers.synthesize_qwen(
+                text=chunk,
+                voice=voice,
+                out_path=mp3_out,
+                settings=settings,
+            )
+            ffmpeg = str(config.ffmpeg_exe())
+            subprocess.run([
+                ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(mp3_out), "-ar", "48000", "-ac", "1", str(wav_out),
+            ], check=True)
+            wav_files.append(wav_out)
+        if job.output_mode == "duo" and i < total - 1:
+            next_speaker = segments[i + 1].get("speaker", "旁白")
+            if next_speaker != speaker:
+                silence_path = temp_dir / f"silence_{i:04d}.wav"
+                _create_silence_wav(silence_path, duration_ms=350)
+                wav_files.append(silence_path)
+        pct = 75 + int((i + 1) / total * 20)
+        progress_cb(pct, f"Qwen/CosyVoice 合成中 {i+1}/{total}...")
+
+    return _finish_audio(job_dir, temp_dir, wav_files, progress_cb)
 
 
 def list_cloned_voices() -> list[dict]:

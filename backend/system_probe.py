@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import config
+import tts_providers
 
 
 @dataclass
@@ -286,6 +287,7 @@ def probe_dict() -> dict:
             "whisper": info.whisper_ready,
             "yt_dlp": info.yt_dlp_ready,
             "faster_whisper_pkg": info.faster_whisper_pkg_ready,
+            "tts_providers": tts_providers.provider_status(),
         },
         "ready": info.ffmpeg_ready and info.gptsovits_ready,
     }

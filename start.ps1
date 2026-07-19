@@ -1,4 +1,4 @@
-﻿# TTS App Launcher
+# TTS App Launcher
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -11,6 +11,16 @@ $UvDir      = Join-Path $RuntimeDir "uv"
 $UvExe      = Join-Path $UvDir "uv.exe"
 $VenvDir    = Join-Path $RuntimeDir "venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+$ModelsDir  = Join-Path $AppHome "models"
+$IndexAppHome = Join-Path $env:LOCALAPPDATA "TTSVoiceoverApp"
+$IndexRuntimeDir = Join-Path $IndexAppHome "runtime"
+$IndexModelsDir = Join-Path $IndexAppHome "models"
+$IndexRepoDir = Join-Path $IndexRuntimeDir "IndexTTS2"
+$IndexVenvDir = Join-Path $IndexRuntimeDir "indextts2_venv"
+$IndexPython = Join-Path $IndexVenvDir "Scripts\python.exe"
+$IndexModelDir = Join-Path $IndexModelsDir "IndexTTS-2"
+$IndexMarker = Join-Path $IndexRuntimeDir ".indextts2-installed"
+$TtsSettingsFile = Join-Path $AppHome "tts_settings.json"
 $BackendDir = Join-Path $ScriptDir "backend"
 $ReqFile    = Join-Path $BackendDir "requirements.txt"
 $Port       = 8765
@@ -21,10 +31,15 @@ Write-Host "  APP_HOME: $AppHome" -ForegroundColor Gray
 Write-Host ""
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
+New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $IndexRuntimeDir | Out-Null
+New-Item -ItemType Directory -Force -Path $IndexModelsDir | Out-Null
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 # Step 1: Download uv
 if (-not (Test-Path $UvExe)) {
-    Write-Host "  [1/4] Downloading uv..." -ForegroundColor Yellow
+    Write-Host "  [1/5] Downloading uv..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $UvDir | Out-Null
     $ZipPath = Join-Path $UvDir "uv.zip"
     try {
@@ -39,12 +54,12 @@ if (-not (Test-Path $UvExe)) {
     Remove-Item $ZipPath -ErrorAction SilentlyContinue
     Write-Host "  [OK] uv installed" -ForegroundColor Green
 } else {
-    Write-Host "  [1/4] uv already installed" -ForegroundColor Gray
+    Write-Host "  [1/5] uv already installed" -ForegroundColor Gray
 }
 
 # Step 2: Install Python 3.10 (uv manages the location)
 $UvMarker = Join-Path $RuntimeDir ".uv-installed"
-Write-Host "  [2/4] Ensuring Python 3.10 is available..." -ForegroundColor Yellow
+Write-Host "  [2/5] Ensuring Python 3.10 is available..." -ForegroundColor Yellow
 & $UvExe python install 3.10
 Write-Host "  [OK] Python 3.10 ready" -ForegroundColor Green
 if (-not (Test-Path $UvMarker)) { New-Item -ItemType File -Path $UvMarker -Force | Out-Null }
@@ -54,7 +69,7 @@ if (-not (Test-Path $PyMarker)) { New-Item -ItemType File -Path $PyMarker -Force
 # Step 3: Create venv with --no-system-site-packages（完全隔離系統套件）
 $VenvCfg = Join-Path $VenvDir "pyvenv.cfg"
 if (-not (Test-Path $VenvCfg)) {
-    Write-Host "  [3/4] Creating isolated venv..." -ForegroundColor Yellow
+    Write-Host "  [3/5] Creating isolated venv..." -ForegroundColor Yellow
     # uv venv 預設就不繼承系統套件，無需額外旗標
     & $UvExe venv $VenvDir --python 3.10
     if ($LASTEXITCODE -ne 0) {
@@ -62,7 +77,7 @@ if (-not (Test-Path $VenvCfg)) {
         Read-Host "Press Enter to exit"; exit 1
     }
 } else {
-    Write-Host "  [3/4] venv exists, skipping creation" -ForegroundColor Gray
+    Write-Host "  [3/5] venv exists, skipping creation" -ForegroundColor Gray
 }
 
 # 每次啟動都同步套件（uv 已安裝的不會重裝，速度很快）
@@ -74,8 +89,111 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  [OK] Packages ready" -ForegroundColor Green
 
+
+function Write-TtsSettingsForIndexTTS2 {
+    $settings = @{}
+    if (Test-Path $TtsSettingsFile) {
+        try {
+            $raw = Get-Content -LiteralPath $TtsSettingsFile -Raw -Encoding UTF8
+            if ($raw.Trim()) {
+                $obj = $raw | ConvertFrom-Json
+                foreach ($prop in $obj.PSObject.Properties) { $settings[$prop.Name] = $prop.Value }
+            }
+        } catch { }
+    }
+    if (-not $settings.ContainsKey("provider")) { $settings["provider"] = "gptsovits" }
+    $settings["indextts2_python"] = $IndexPython
+    $settings["indextts2_model_dir"] = $IndexModelDir
+    $settings["indextts2_config_path"] = Join-Path $IndexModelDir "config.yaml"
+    if (-not $settings.ContainsKey("indextts2_use_fp16")) { $settings["indextts2_use_fp16"] = $true }
+    if (-not $settings.ContainsKey("indextts2_emotion")) { $settings["indextts2_emotion"] = "自然、親切、像台灣老師在講課，語氣有溫度但不要誇張。" }
+    $jsonObj = [pscustomobject]$settings
+    $jsonObj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $TtsSettingsFile -Encoding UTF8
+}
+
+function Ensure-IndexTTS2 {
+    if ($env:TTS_SKIP_INDEXTTS2_INSTALL -eq "1") {
+        Write-Host "         Skipping IndexTTS2 install (TTS_SKIP_INDEXTTS2_INSTALL=1)" -ForegroundColor Yellow
+        return
+    }
+
+    $configPath = Join-Path $IndexModelDir "config.yaml"
+    if ((Test-Path $IndexMarker) -and (Test-Path $IndexPython) -and (Test-Path $configPath)) {
+        Write-Host "         IndexTTS2 already installed" -ForegroundColor Gray
+        Write-TtsSettingsForIndexTTS2
+        return
+    }
+
+    Write-Host "         Preparing IndexTTS2 local engine (first run may take a long time)..." -ForegroundColor Yellow
+
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) {
+        throw "IndexTTS2 自動安裝需要 Git。請先安裝 Git，或設定 TTS_SKIP_INDEXTTS2_INSTALL=1 暫時略過。"
+    }
+
+    if (-not (Test-Path $IndexRepoDir)) {
+        Write-Host "         Cloning IndexTTS2 source..." -ForegroundColor Yellow
+        git clone https://github.com/index-tts/index-tts.git $IndexRepoDir
+        if ($LASTEXITCODE -ne 0) { throw "IndexTTS2 git clone 失敗" }
+    } else {
+        Write-Host "         Updating IndexTTS2 source..." -ForegroundColor Gray
+        git -C $IndexRepoDir pull --ff-only
+        if ($LASTEXITCODE -ne 0) { Write-Host "         [WARN] IndexTTS2 source update failed; using existing copy" -ForegroundColor Yellow }
+    }
+
+    if (-not (Test-Path (Join-Path $IndexVenvDir "pyvenv.cfg"))) {
+        Write-Host "         Creating IndexTTS2 isolated venv..." -ForegroundColor Yellow
+        & $UvExe venv $IndexVenvDir --python 3.10
+        if ($LASTEXITCODE -ne 0) { throw "IndexTTS2 venv 建立失敗" }
+    }
+
+    Write-Host "         Installing IndexTTS2 package..." -ForegroundColor Yellow
+    & $UvExe pip install --python $IndexPython -U pip setuptools wheel
+    if ($LASTEXITCODE -ne 0) { throw "IndexTTS2 基礎套件安裝失敗" }
+    & $UvExe pip install --python $IndexPython -e $IndexRepoDir
+    if ($LASTEXITCODE -ne 0) { throw "IndexTTS2 套件安裝失敗" }
+
+    Write-Host "         Installing HuggingFace downloader..." -ForegroundColor Yellow
+    & $UvExe pip install --python $IndexPython "huggingface-hub[cli,hf_xet]>=0.23"
+    if ($LASTEXITCODE -ne 0) { throw "huggingface_hub 安裝失敗" }
+
+    if (-not (Test-Path $configPath)) {
+        Write-Host "         Downloading IndexTTS2 checkpoints to $IndexModelDir ..." -ForegroundColor Yellow
+        New-Item -ItemType Directory -Force -Path $IndexModelDir | Out-Null
+        $downloadScript = @"
+from huggingface_hub import snapshot_download
+snapshot_download('IndexTeam/IndexTTS-2', local_dir=r'$IndexModelDir')
+print('DONE')
+"@
+        & $IndexPython -c $downloadScript
+        if ($LASTEXITCODE -ne 0) { throw "IndexTTS2 checkpoints 下載失敗" }
+    }
+
+    if (-not (Test-Path $configPath)) {
+        throw "IndexTTS2 checkpoints 缺少 config.yaml：$configPath"
+    }
+
+    Write-TtsSettingsForIndexTTS2
+    New-Item -ItemType File -Path $IndexMarker -Force | Out-Null
+    Write-Host "         [OK] IndexTTS2 ready" -ForegroundColor Green
+}
+
 # Step 4: Start backend
-Write-Host "  [4/4] Starting backend on port $Port..." -ForegroundColor Yellow
+Write-Host "  [4/5] Ensuring optional TTS engines..." -ForegroundColor Yellow
+try {
+    Ensure-IndexTTS2
+} catch {
+    Write-Host "  [ERROR] IndexTTS2 install failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "          Set TTS_SKIP_INDEXTTS2_INSTALL=1 to skip this optional engine temporarily." -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"; exit 1
+}
+
+if ($env:TTS_INSTALL_ONLY -eq "1") {
+    Write-Host "  [OK] Install-only check complete." -ForegroundColor Green
+    exit 0
+}
+
+Write-Host "  [5/5] Starting backend on port $Port..." -ForegroundColor Yellow
 
 # 套件隔離：清除可能干擾的環境變數，只設定必要的
 $env:TTS_APP_HOME    = $AppHome
@@ -115,7 +233,15 @@ Write-Host "  URL: $Url" -ForegroundColor Cyan
 Write-Host "  Press Enter to stop the server."
 Write-Host ""
 
-Start-Process $Url
+if ($env:TTS_SMOKE_TEST -eq "1") {
+    try { $BackendProc.Kill() } catch { }
+    Write-Host "  [OK] Smoke test complete; server stopped." -ForegroundColor Green
+    exit 0
+}
+
+if ($env:TTS_NO_BROWSER -ne "1") {
+    Start-Process $Url
+}
 Read-Host | Out-Null
 try { $BackendProc.Kill() } catch { }
 Write-Host "  Server stopped."

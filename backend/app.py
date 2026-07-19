@@ -31,6 +31,7 @@ import content as content_mod
 import jobs
 import runtime_manager
 import system_probe
+import tts_providers
 
 config.ensure_dirs()
 
@@ -259,6 +260,65 @@ async def test_llm_connection():
         return {"status": "error", "response": "LLM 未回應，請檢查設定"}
     except Exception as e:
         return {"status": "error", "response": str(e)}
+
+
+# ── TTS 引擎設定 ──────────────────────────────────────────
+
+@app.get("/settings/tts")
+async def get_tts_settings():
+    return tts_providers.public_tts_settings()
+
+
+class TtsSettingsRequest(BaseModel):
+    provider: Optional[str] = None
+    indextts2_python: Optional[str] = None
+    indextts2_model_dir: Optional[str] = None
+    indextts2_config_path: Optional[str] = None
+    indextts2_use_fp16: Optional[bool] = None
+    indextts2_emotion: Optional[str] = None
+    qwen_api_key: Optional[str] = None
+    qwen_base_http_url: Optional[str] = None
+    qwen_model: Optional[str] = None
+    qwen_voice_a: Optional[str] = None
+    qwen_voice_b: Optional[str] = None
+    qwen_instructions: Optional[str] = None
+    qwen_optimize_instructions: Optional[bool] = None
+
+
+@app.post("/settings/tts")
+async def save_tts_settings(req: TtsSettingsRequest):
+    current = tts_providers.load_tts_settings()
+    update = {k: v for k, v in req.model_dump().items() if v is not None}
+    if update.get("qwen_api_key") == "***":
+        update["qwen_api_key"] = current.get("qwen_api_key", "")
+    provider = update.get("provider", current.get("provider", "gptsovits"))
+    if provider not in ("gptsovits", "indextts2", "qwen"):
+        raise HTTPException(status_code=400, detail="未知的 TTS provider")
+    merged = tts_providers.save_tts_settings({**current, **update})
+    return {"status": "ok", "provider": merged["provider"]}
+
+
+@app.get("/settings/tts/status")
+async def tts_status():
+    return tts_providers.provider_status()
+
+
+@app.post("/settings/tts/test")
+async def test_tts_settings():
+    status = tts_providers.provider_status()
+    provider = status["provider"]
+    if provider == "gptsovits":
+        ready = status["gptsovits"]["ready"]
+        return {"status": "ok" if ready else "error", "message": "GPT-SoVITS 已就緒" if ready else "GPT-SoVITS 尚未安裝完成"}
+    if provider == "indextts2":
+        st = status["indextts2"]
+        ready = st["python_ready"] and st["package_ready"] and st["model_dir_ready"] and st["config_ready"]
+        return {"status": "ok" if ready else "error", "message": "IndexTTS2 設定完整" if ready else "IndexTTS2 套件或模型/config 路徑尚未就緒"}
+    if provider == "qwen":
+        st = status["qwen"]
+        ready = st["package_ready"] and st["api_key_ready"]
+        return {"status": "ok" if ready else "error", "message": "Qwen/CosyVoice 設定完整" if ready else "Qwen/CosyVoice 需要 dashscope 套件與 API Key"}
+    return {"status": "error", "message": "未知的 TTS provider"}
 
 
 @app.post("/setup/repair-cosyvoice")
